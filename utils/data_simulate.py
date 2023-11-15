@@ -379,7 +379,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=
 
 
 def data_simulator(scene):
-    Round = 10
+    Round = 1
 
     for r in range(Round):
         # initialization
@@ -408,14 +408,14 @@ def data_simulator(scene):
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T)
             else:
-                APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
+                APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-10, max=10, int_flag=False)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T, min=-10, max=10)
 
 
 def evaluate(scene):
 
-    p_th = 0.05
+    p_th = 0.01
 
     prediction_root = "./prediction"
     gt_root = "./data"
@@ -465,9 +465,9 @@ def evaluate(scene):
 if __name__ == "__main__":
     scenes = [
         # ["3d_rotation"],  # 单智能体
-        ["2d_position"],
+        # ["2d_position"],
         ["3d_position"],
-        ["light"]
+        # ["light"]
     ]
 
     # 设置随机种子

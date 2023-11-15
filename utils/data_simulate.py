@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import os
 import json
+import glob
 
 # description:
 # Q: How to test the accuracy of the algorithm?
@@ -55,6 +56,12 @@ class API():
 
     def update(self, deltas):
         self.deltas = deltas
+    
+    def to_dict(self):
+        return {"object_ids": self.object_ids,
+                "feature_num": self.feature_num,
+                "deltas": self.deltas.tolist()
+        }
 
 
 def generate_api(Q, N, O=1, K=3, min=-1, max=1, int_flag=False):
@@ -104,6 +111,11 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
     born_area_min = -50
     born_area_max = 50
 
+    # calculate overall body
+    all_body = set()
+    for api in APIs[1:]:
+        all_body = set(api.object_ids) | all_body
+    all_body = list(all_body)
     # prepare columns.
     K = K_end - K_start
     columns = []
@@ -159,13 +171,13 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
         for api in APIs:
             _obj_ids_per_feature.append(api.object_ids)
         list_data.append(_obj_ids_per_feature[1:])  # ignore first api
-    # for api in APIs:
-    #     _obj_ids_per_feature = []
-    #     for k in range(K):
-    #         _obj_ids_per_feature.append(api.object_ids)
-    #     list_data.append(_obj_ids_per_feature)
+    api_gt = []
+    for api in APIs:
+        api_gt.append(api.to_dict())
+    api_gt.append(all_body)
     json.dump(ran, open(save_path + "/ran.json", "w"), indent=4)
     json.dump(list_data, open(save_path + "/list_data.json", "w"), indent=4)
+    json.dump(api_gt, open(save_path + "/api_gt.json", "w"), indent=4)
 
 
 def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, min=-1, max=1):
@@ -177,6 +189,11 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     born_area_min = -50
     born_area_max = 50
 
+    # calculate overall body
+    all_body = set()
+    for api in APIs[1:]:
+        all_body = set(api.object_ids) | all_body
+    all_body = list(all_body)
     # prepare columns.
     K = K_end - K_start
     columns = []
@@ -197,14 +214,18 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     obj_state = State(init_state=init_states)
 
     for t in range(1,T+1):
-        # # generate N objects' features
-        # env_deltas = np.random.rand(N, K) * (max - min) + min
-        # obj_state.update(delta_state=env_deltas)
-
-        # generate N objects' APIs
-        api_id = APIlist[t-1]
+        # generate N objects' features
+        env_affect_num = np.random.randint(low=1, high=N)
+        affect_list = np.random.choice(a=N, size=env_affect_num, replace=False)
+        env_deltas = np.random.choice(a=[-1,1], size=(env_affect_num, K))
+        for idx in range(env_affect_num):
+            obj_state.state[affect_list[idx]] += env_deltas[idx]
+        # check validation, cut those more than 1
+        obj_state.state[np.where(obj_state.state > 0)] = 1
+        obj_state.state[np.where(obj_state.state < 0)] = 0
 
         # call APIs once every time step
+        api_id = APIlist[t-1]
         obj_state.call_api(api=APIs[api_id])
 
         # check validation, cut those more than 1
@@ -218,38 +239,58 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     # print(dfs[0])
 
     print("save to %s" % save_path)
-    # for k in range(K_start, K_end):
-    #     _path = save_path + "/feature_{0}.xlsx".format(str(k+1))
-    #     dfs[k].to_excel(_path, sheet_name="Sheet1")
-    # # save json for zhenlaing
-    # for k in range(K_start, K_end):
-    #     _path = save_path + "/feature_{0}.json".format(str(k+1))
-    #     dfs[k].to_json(_path, force_ascii=False)
-    # save json for zhenlaing
     for k in range(K_start, K_end):
-        _path = save_path + "/feature_{0}.txt".format(str(k+1))
-        dfs[k].to_csv(_path, sep=' ', index=False)
+        _path = save_path + "/feature_{0}.xlsx".format(str(k+1))
+        dfs[k].to_excel(_path, sheet_name="Sheet1")
+    # # save txt for zhenlaing
+    # for k in range(K_start, K_end):
+    #     _path = save_path + "/feature_{0}.txt".format(str(k+1))
+    #     dfs[k].to_csv(_path, sep=' ', index=False)
 
-    # save ground truth for zhenlaing
-    ran = {"obj_num": N,
-           "apiList": APIlist.tolist(),
-           "feature_num": K,
-           "api_num": len(APIs)-1
-    }
+    # save ground truth
+    ran = [[N],
+           APIlist.tolist(),
+           [K],
+           [len(APIs)-1]
+    ]
+    # # save ground truth for zhenlaing
+    # ran = {"obj": N,  # obj_num
+    #        "actions": APIlist.tolist(),  # apiList
+    #        "state": K,  # feature_num
+    #        "api_cate": len(APIs)-1  # api_num
+    # }
+    
     list_data = []
     for k in range(K):
         _obj_ids_per_feature = []
         for api in APIs:
             _obj_ids_per_feature.append(api.object_ids)
         list_data.append(_obj_ids_per_feature[1:])  # ignore first api
-    # for api in APIs:
-    #     _obj_ids_per_feature = []
-    #     for k in range(K):
-    #         _obj_ids_per_feature.append(api.object_ids)
-    #     list_data.append(_obj_ids_per_feature)
+    api_gt = []
+    for api in APIs:
+        api_gt.append(api.to_dict())
+    api_gt.append(all_body)
+    
+    # # convert born_spots for zhenlaing
+    # born_spot_json = {}
+    # born_spot_json["x"] = born_spots[:, 0].tolist()
+    # born_spot_json["z"] = born_spots[:, 1].tolist()
+
+
     json.dump(born_spots.tolist(), open(save_path + "/born_spots.json", "w"), indent=4)
+    # json.dump(born_spot_json, open(save_path + "/born.json", "w"), indent=4)
     json.dump(ran, open(save_path + "/ran.json", "w"), indent=4)
     json.dump(list_data, open(save_path + "/list_data.json", "w"), indent=4)
+    json.dump(api_gt, open(save_path + "/api_gt.json", "w"), indent=4)
+
+    # # convert list_data to txt for zhenlaing
+    # with open(save_path + "/list_data.txt", "w") as file:
+    #     for feature in list_data:
+    #         for row in feature:
+    #             line = ','.join(map(str, row))  # 将列表中的每个元素转换为字符串并用空格分隔
+    #             file.write(line + "\n")  # 写入一行并添加换行符
+    # print('finish.')
+
 
 
     return 1
@@ -345,7 +386,7 @@ def data_simulator(scene):
         # initialization
         Q = 10
         N = 20
-        T = 1000
+        T = 500
         feature_id = 0
         save_path = "./data/{0}_round{1}".format(scene[0], str(r))
         if not os.path.exists(save_path):
@@ -370,16 +411,35 @@ def data_simulator(scene):
             else:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T)
+                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T, min=-10, max=10)
+
+
+def evaluate(scene):
+
+    prediction_root = "./prediction"
+
+    for _scene in scene:
+        result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
+        for result_pth in result_pths:
+            file_name = result_pth.split("/")[-1]
+            round = int(file_name.split("_")[-2].replace("round", ""))
+            # load prediction result
+            pred = json.load(open(result_pth, "r"))
+            # find 
+    
 
 
 if __name__ == "__main__":
     scenes = [
         # ["3d_rotation"],  # 单智能体
         # ["2d_position"],
-        ["3d_position"],
-        # ["light"]
+        # ["3d_position"],
+        ["light"]
     ]
 
+    # 设置随机种子
+    np.random.seed(7)
+    
     for scene in scenes:
         data_simulator(scene)
+        # evaluate(scene)

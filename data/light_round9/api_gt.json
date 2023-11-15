@@ -12,7 +12,7 @@
     },
     {
         "object_ids": [
-            13
+            1
         ],
         "feature_num": 1,
         "deltas": [
@@ -23,71 +23,7 @@
     },
     {
         "object_ids": [
-            6
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            9,
-            13
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
-            ],
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            13,
-            6,
-            9,
-            10
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
-            ],
-            [
-                1
-            ],
-            [
-                1
-            ],
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            6,
-            10
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
-            ],
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            10
+            1
         ],
         "feature_num": 1,
         "deltas": [
@@ -98,18 +34,54 @@
     },
     {
         "object_ids": [
-            9,
-            13,
-            10
+            1
         ],
         "feature_num": 1,
         "deltas": [
             [
                 1
-            ],
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            1
+        ],
+        "feature_num": 1,
+        "deltas": [
             [
                 1
-            ],
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            1
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            1
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            1
+        ],
+        "feature_num": 1,
+        "deltas": [
             [
                 -1
             ]
@@ -117,18 +89,10 @@
     },
     {
         "object_ids": [
-            10,
-            9,
-            6
+            1
         ],
         "feature_num": 1,
         "deltas": [
-            [
-                -1
-            ],
-            [
-                1
-            ],
             [
                 -1
             ]
@@ -136,18 +100,10 @@
     },
     {
         "object_ids": [
-            6,
-            10,
-            9
+            1
         ],
         "feature_num": 1,
         "deltas": [
-            [
-                1
-            ],
-            [
-                -1
-            ],
             [
                 -1
             ]
@@ -155,25 +111,16 @@
     },
     {
         "object_ids": [
-            13,
-            10,
-            6,
-            9
+            1
         ],
         "feature_num": 1,
         "deltas": [
             [
-                1
-            ],
-            [
                 -1
-            ],
-            [
-                -1
-            ],
-            [
-                1
             ]
         ]
-    }
+    },
+    [
+        1
+    ]
 ]

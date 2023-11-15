@@ -1,0 +1,123 @@
+[
+    {
+        "object_ids": [
+            0
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                0.0
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            8
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    }
+]

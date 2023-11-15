@@ -386,7 +386,6 @@ def data_simulator(scene):
         Q = 10
         N = 20
         T = 1000
-        feature_id = 0
         save_path = "./data/{0}_round{1}".format(scene[0], str(r))
         if not os.path.exists(save_path):
             os.mkdir(save_path)
@@ -408,9 +407,9 @@ def data_simulator(scene):
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T)
             else:
-                APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-10, max=10, int_flag=False)
+                APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T, min=-10, max=10)
+                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T, min=-1, max=1)
 
 
 def evaluate(scene):

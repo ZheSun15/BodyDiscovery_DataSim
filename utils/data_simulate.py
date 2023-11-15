@@ -102,7 +102,6 @@ def generate_api(Q, N, O=1, K=3, min=-1, max=1, int_flag=False):
     return APIs
 
 
-
 def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1000, min=-1, max=1):
     # N: number of objects
     # K: number of features
@@ -172,7 +171,7 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
             _obj_ids_per_feature.append(api.object_ids)
         list_data.append(_obj_ids_per_feature[1:])  # ignore first api
     api_gt = []
-    for api in APIs:
+    for api in APIs[1:]:  # ignore first api
         api_gt.append(api.to_dict())
     api_gt.append(all_body)
     json.dump(ran, open(save_path + "/ran.json", "w"), indent=4)
@@ -267,7 +266,7 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
             _obj_ids_per_feature.append(api.object_ids)
         list_data.append(_obj_ids_per_feature[1:])  # ignore first api
     api_gt = []
-    for api in APIs:
+    for api in APIs[1:]:  # ignore first api
         api_gt.append(api.to_dict())
     api_gt.append(all_body)
     
@@ -416,24 +415,36 @@ def data_simulator(scene):
 
 def evaluate(scene):
 
+    p_th = 0.01
+
     prediction_root = "./prediction"
+    gt_root = "./data"
 
     for _scene in scene:
         result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
         for result_pth in result_pths:
             file_name = result_pth.split("/")[-1]
-            round = int(file_name.split("_")[-2].replace("round", ""))
+            # find ground truth path
+            gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
+            gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
             # load prediction result
             pred = json.load(open(result_pth, "r"))
-            # find 
-    
+            
+            for api_id in range(len(gt_list) - 1):
+                pred_obj = set()
+                for k in range(len(pred)):
+                    _pred_array = np.array(pred[k])
+                    _p = _pred_array[:, api_id]
+                    pred_obj = set(np.where(_p < p_th)) | pred_obj
+                # recall
+                    
 
 
 if __name__ == "__main__":
     scenes = [
         # ["3d_rotation"],  # 单智能体
-        # ["2d_position"],
-        # ["3d_position"],
+        ["2d_position"],
+        ["3d_position"],
         ["light"]
     ]
 

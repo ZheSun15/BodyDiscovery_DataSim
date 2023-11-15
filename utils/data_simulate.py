@@ -385,7 +385,7 @@ def data_simulator(scene):
         # initialization
         Q = 10
         N = 20
-        T = 500
+        T = 1000
         feature_id = 0
         save_path = "./data/{0}_round{1}".format(scene[0], str(r))
         if not os.path.exists(save_path):
@@ -415,14 +415,20 @@ def data_simulator(scene):
 
 def evaluate(scene):
 
-    p_th = 0.01
+    p_th = 0.05
 
     prediction_root = "./prediction"
     gt_root = "./data"
 
+    all_recall = []
+    all_precision = []
     for _scene in scene:
         result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
         for result_pth in result_pths:
+            # clear
+            recall_per_round = []
+            precision_per_round = []
+
             file_name = result_pth.split("/")[-1]
             # find ground truth path
             gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
@@ -435,8 +441,24 @@ def evaluate(scene):
                 for k in range(len(pred)):
                     _pred_array = np.array(pred[k])
                     _p = _pred_array[:, api_id]
-                    pred_obj = set(np.where(_p < p_th)) | pred_obj
+                    pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
                 # recall
+                TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
+                all_recall.append(len(TP_list)/len(gt_list[api_id]["object_ids"]))
+                recall_per_round.append(len(TP_list)/len(gt_list[api_id]["object_ids"]))
+                if len(pred_obj) == 0:
+                    all_precision.append(0)
+                    precision_per_round.append(0)
+                else:
+                    all_precision.append(len(TP_list)/len(pred_obj))
+                    precision_per_round.append(len(TP_list)/len(pred_obj))
+            
+            print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
+                                                                        np.mean(recall_per_round), 
+                                                                        np.mean(precision_per_round)))
+    
+    print("recall: {0}, \n precision: {1}".format(all_recall, all_precision))
+
                     
 
 

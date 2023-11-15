@@ -1,14 +1,33 @@
 [
     {
         "object_ids": [
-            7,
-            19,
-            11
+            6,
+            11,
+            13
         ],
         "feature_num": 1,
         "deltas": [
             [
                 1
+            ],
+            [
+                -1
+            ],
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            13,
+            11,
+            6
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
             ],
             [
                 -1
@@ -20,62 +39,13 @@
     },
     {
         "object_ids": [
-            16,
-            7
+            6,
+            13
         ],
         "feature_num": 1,
         "deltas": [
             [
                 -1
-            ],
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            3,
-            11
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                -1
-            ],
-            [
-                1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            19,
-            7
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                -1
-            ],
-            [
-                1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            7,
-            16,
-            3
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                -1
-            ],
-            [
-                1
             ],
             [
                 1
@@ -85,15 +55,11 @@
     {
         "object_ids": [
             11,
-            3,
-            19,
-            16
+            13,
+            6
         ],
         "feature_num": 1,
         "deltas": [
-            [
-                1
-            ],
             [
                 -1
             ],
@@ -107,77 +73,93 @@
     },
     {
         "object_ids": [
-            19,
-            3,
-            16,
+            11,
+            6
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ],
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            13,
+            6
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                1
+            ],
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            13
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            6,
+            11,
+            13
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ],
+            [
+                1
+            ],
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
             11
         ],
         "feature_num": 1,
         "deltas": [
             [
-                -1
-            ],
-            [
-                -1
-            ],
-            [
-                -1
-            ],
-            [
-                -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            3,
-            16,
-            7,
-            19
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                -1
-            ],
-            [
-                1
-            ],
-            [
-                1
-            ],
-            [
                 1
             ]
         ]
     },
     {
         "object_ids": [
-            7
+            11,
+            6
         ],
         "feature_num": 1,
         "deltas": [
             [
-                1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            11
-        ],
-        "feature_num": 1,
-        "deltas": [
+                -1
+            ],
             [
                 -1
             ]
         ]
     },
     [
-        16,
-        3,
-        19,
-        7,
-        11
+        6,
+        11,
+        13
     ]
 ]

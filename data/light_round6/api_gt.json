@@ -1,14 +1,10 @@
 [
     {
         "object_ids": [
-            11,
-            9
+            14
         ],
         "feature_num": 1,
         "deltas": [
-            [
-                1
-            ],
             [
                 -1
             ]
@@ -16,14 +12,10 @@
     },
     {
         "object_ids": [
-            9,
-            11
+            4
         ],
         "feature_num": 1,
         "deltas": [
-            [
-                -1
-            ],
             [
                 -1
             ]
@@ -31,7 +23,7 @@
     },
     {
         "object_ids": [
-            9
+            14
         ],
         "feature_num": 1,
         "deltas": [
@@ -42,8 +34,8 @@
     },
     {
         "object_ids": [
-            9,
-            11
+            14,
+            4
         ],
         "feature_num": 1,
         "deltas": [
@@ -57,8 +49,8 @@
     },
     {
         "object_ids": [
-            9,
-            11
+            4,
+            14
         ],
         "feature_num": 1,
         "deltas": [
@@ -72,46 +64,13 @@
     },
     {
         "object_ids": [
-            9
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            9
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            9
+            14,
+            4
         ],
         "feature_num": 1,
         "deltas": [
             [
                 -1
-            ]
-        ]
-    },
-    {
-        "object_ids": [
-            9,
-            11
-        ],
-        "feature_num": 1,
-        "deltas": [
-            [
-                1
             ],
             [
                 -1
@@ -120,21 +79,58 @@
     },
     {
         "object_ids": [
-            9,
-            11
+            14,
+            4
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ],
+            [
+                1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            14,
+            4
+        ],
+        "feature_num": 1,
+        "deltas": [
+            [
+                -1
+            ],
+            [
+                -1
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            14
         ],
         "feature_num": 1,
         "deltas": [
             [
                 1
-            ],
+            ]
+        ]
+    },
+    {
+        "object_ids": [
+            4
+        ],
+        "feature_num": 1,
+        "deltas": [
             [
-                -1
+                1
             ]
         ]
     },
     [
-        9,
-        11
+        4,
+        14
     ]
 ]

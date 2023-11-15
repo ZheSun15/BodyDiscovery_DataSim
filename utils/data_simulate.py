@@ -379,7 +379,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=
 
 
 def data_simulator(scene):
-    Round = 1
+    Round = 10
 
     for r in range(Round):
         # initialization
@@ -464,9 +464,9 @@ def evaluate(scene):
 if __name__ == "__main__":
     scenes = [
         # ["3d_rotation"],  # 单智能体
-        # ["2d_position"],
+        ["2d_position"],
         ["3d_position"],
-        # ["light"]
+        ["light"]
     ]
 
     # 设置随机种子

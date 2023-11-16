@@ -400,12 +400,12 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
     np.random.shuffle(idx)
     my_agent_id = idx[0]
     all_data[idx, :, :, :] = all_data
-    # # save excel for R
-    # for k in range(K):
-    #     _path = save_path + "/feature_{0}.xlsx".format(str(k+K_start+1))
-    #     _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
-    #     df = pd.DataFrame(_data, columns=columns)
-    #     df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
+    # save excel for R
+    for k in range(K):
+        _path = save_path + "/feature_{0}.xlsx".format(str(k+K_start+1))
+        _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
+        df = pd.DataFrame(_data, columns=columns)
+        df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
     # save csv for xiaoxiao
     for k in range(K):
         _path = save_path + "/feature_{0}.csv".format(str(k+K_start+1))
@@ -485,90 +485,92 @@ def data_simulator(scene):
 
 def evaluate(scene):
 
-    p_th = 0.05
+    p_ths = [0.01, 0.05]
 
-    prediction_root = "./prediction"
-    gt_root = "./data"
+    for p_th in p_ths:
+        prediction_root = "./prediction"
+        gt_root = "./data"
 
-    all_acc = []
-    all_recall = []
-    all_precision = []
-    all_spec = []
-    all_F1 = []
-    scene_name = ""
-    for _scene in scene:
-        scene_name = scene_name + _scene + '_'
-        result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
-        for result_pth in result_pths:
-            # clear
-            acc_per_round = []
-            recall_per_round = []
-            precision_per_round = []
-            spec_per_round = []
-            F1_per_round = []
+        all_acc = []
+        all_recall = []
+        all_precision = []
+        all_spec = []
+        all_F1 = []
+        scene_name = ""
+        for _scene in scene:
+            scene_name = scene_name + _scene + '_'
+            result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
+            for result_pth in result_pths:
+                # clear
+                acc_per_round = []
+                recall_per_round = []
+                precision_per_round = []
+                spec_per_round = []
+                F1_per_round = []
 
-            file_name = result_pth.split("/")[-1]
-            # find ground truth path
-            gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
-            gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
-            ran = json.load(open(gt_folder + "/ran.json", "r"))
-            N = ran[0][0]
-            # load prediction result
-            pred = json.load(open(result_pth, "r"))
-            
-            for api_id in range(sum(type(gt) is dict for gt in gt_list)):
-                pred_obj = set()
-                for k in range(len(pred)):
-                    _pred_array = np.array(pred[k])
-                    _p = _pred_array[:, api_id]
-                    pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
-                # calculate metircs
-                TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
-                pred_F = set(range(N)) - pred_obj
-                F_gt = set(range(N)) - set(gt_list[api_id]["object_ids"])
-                FP_list = pred_F & F_gt
-                FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
-                # acc
-                _acc = (len(TP_list) + len(FP_list)) / N
-                acc_per_round.append(_acc)
-                all_acc.append(_acc)
-                # recall
-                _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
-                recall_per_round.append(_recall)
-                all_recall.append(_recall)
-                # precision
-                if len(pred_obj) == 0:
-                    precision_per_round.append(0)
-                    all_precision.append(0)
-                else:
-                    precision_per_round.append(len(TP_list)/len(pred_obj))
-                    all_precision.append(len(TP_list)/len(pred_obj))
-                # specificity
-                _spec = len(FP_list) / len(F_gt)
-                spec_per_round.append(_spec)
-                all_spec.append(_spec)
-                # F1
-                _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
-                F1_per_round.append(_f1)
-                all_F1.append(_f1)
+                file_name = result_pth.split("/")[-1]
+                # find ground truth path
+                gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
+                gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+                ran = json.load(open(gt_folder + "/ran.json", "r"))
+                N = ran[0][0]
+                # load prediction result
+                pred = json.load(open(result_pth, "r"))
+                
+                for api_id in range(sum(type(gt) is dict for gt in gt_list)):
+                    pred_obj = set()
+                    for k in range(len(pred)):
+                        _pred_array = np.array(pred[k])
+                        _p = _pred_array[:, api_id]
+                        pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
+                    # calculate metircs
+                    TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
+                    pred_F = set(range(N)) - pred_obj
+                    F_gt = set(range(N)) - set(gt_list[api_id]["object_ids"])
+                    TF_list = pred_obj & F_gt
+                    FP_list = pred_F & F_gt
+                    FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
+                    # acc
+                    _acc = (len(TP_list) + len(FP_list)) / N
+                    acc_per_round.append(_acc)
+                    all_acc.append(_acc)
+                    # recall
+                    _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
+                    recall_per_round.append(_recall)
+                    all_recall.append(_recall)
+                    # precision
+                    if len(pred_obj) == 0:
+                        precision_per_round.append(0)
+                        all_precision.append(0)
+                    else:
+                        precision_per_round.append(len(TP_list)/len(pred_obj))
+                        all_precision.append(len(TP_list)/len(pred_obj))
+                    # specificity
+                    _spec = len(FP_list) / len(F_gt)
+                    spec_per_round.append(_spec)
+                    all_spec.append(_spec)
+                    # F1
+                    _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                    F1_per_round.append(_f1)
+                    all_F1.append(_f1)
 
-            
-            # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
-            #                                                             np.mean(recall_per_round), 
-            #                                                             np.mean(precision_per_round)))
-    
-    print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
-    metrics = [
-        np.mean(all_acc),
-        np.mean(all_recall),
-        np.mean(all_precision),
-        np.mean(all_spec),
-        np.mean(all_F1)
-    ]
-    
-    with open("./results/{0}metrics.csv".format(scene_name), "w") as f:
-        writer = csv.writer(f)
-        writer.writerow(metrics)
+                
+                # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
+                #                                                             np.mean(recall_per_round), 
+                #                                                             np.mean(precision_per_round)))
+        
+        print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
+        metrics = [
+            np.mean(all_acc),
+            np.mean(all_recall),
+            np.mean(all_precision),
+            np.mean(all_spec),
+            np.mean(all_F1)
+        ]
+        
+        with open("./results/{0}p{1}_metrics.csv".format(scene_name, p_th), "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(metrics)
 
                     
 
@@ -576,9 +578,9 @@ def evaluate(scene):
 if __name__ == "__main__":
     scenes = [
         ["3d_rotation"],  # 单智能体
-        # ["2d_position"],
-        # ["3d_position"],
-        # ["light"]
+        ["2d_position"],
+        ["3d_position"],
+        ["light"]
     ]
 
     # 设置随机种子
@@ -589,5 +591,5 @@ if __name__ == "__main__":
     franka = json.load(open("./utils/franka.json", "r")) 
 
     for scene in scenes:
-        data_simulator(scene)
-        # evaluate(scene)
+        # data_simulator(scene)
+        evaluate(scene)

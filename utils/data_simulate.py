@@ -413,7 +413,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
         df.to_csv(_path, index=False) #, sheet_name="feature_{0}".format(str(k+K_start+1)))
 
     # save ground truth
-    ran = [[N],
+    ran = [[N*N_joints],
            APIlist.tolist(),
            [K],
            [len(APIs)-1]

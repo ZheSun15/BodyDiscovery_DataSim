@@ -1,0 +1,110 @@
+{
+    "panda_link1": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            0,
+            85
+        ]
+    },
+    "panda_link2": {
+        "init": [
+            -90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -30,
+            30
+        ]
+    },
+    "panda_link3": {
+        "init": [
+            90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            0,
+            85
+        ]
+    },
+    "panda_link4": {
+        "init": [
+            90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            0,
+            75
+        ]
+    },
+    "panda_link5": {
+        "init": [
+            -90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            0,
+            85
+        ]
+    },
+    "panda_link6": {
+        "init": [
+            90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -85,
+            0
+        ]
+    },
+    "panda_link7": {
+        "init": [
+            90,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -80,
+            -30
+        ]
+    },
+    "panda_leftfinger": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 0,
+        "range": [
+            -20,
+            0
+        ]
+    },
+    "panda_rightfinger": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 0,
+        "range": [
+            0,
+            20
+        ]
+    }
+}

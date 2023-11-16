@@ -94,9 +94,40 @@ def generate_api(Q, N, O=1, K=3, min=-1, max=1, int_flag=False):
         if int_flag:
             deltas = np.random.choice(a=[-1,1], size=(object_num, K))
         else:
-            deltas = np.random.rand(object_num, K)  # [0,1)
+            deltas = np.random.rand(object_num, K) - 0.5  # [-0.5, 0.5)
             # add bias to meet min&max
-            deltas = deltas * (max - min) + min
+            deltas = deltas * (max - min)
+        api.update(deltas=deltas)
+        APIs.append(api)
+    return APIs
+
+
+def generate_rotation_api(Q, N, agent_range, O=1, K=3):
+
+    # 其中，api 0 = 不调用api
+    APIs = []
+    APIs.append(API(object_ids=[0], feature_num=K))
+    # body_gt_list starts from 0, max = N-1
+    for q in range(Q):
+        # sample the object list
+        if O == 1:
+            object_num = O
+        else:
+            object_num = np.random.randint(low=1, high=N+1)
+        object_ids = np.random.choice(a=N, size=object_num, replace=False)
+        if not isinstance(object_ids, list):
+            object_ids = object_ids.tolist()
+        api = API(object_ids=object_ids, feature_num=K)
+        # 为每个object生成一个随机的旋转角度
+        deltas = np.zeros((object_num, K))
+        for i in range(object_ids.__len__()):
+            key = list(agent_range.keys())[object_ids[i]]
+            max = agent_range[key]["range"][1]
+            min = agent_range[key]["range"][0]
+            _delta = np.random.rand(1, K) - 0.5  # [-0.5, 0.5)
+            _delta = _delta * (max - min)
+            deltas[i, :] = _delta
+        # add bias to meet min&max
         api.update(deltas=deltas)
         APIs.append(api)
     return APIs
@@ -135,7 +166,7 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
 
     for t in range(1,T+1):
         # generate N objects' features
-        env_deltas = np.random.rand(N, K) * (max - min) + min
+        env_deltas = (np.random.rand(N, K)-0.5) * (max - min)
         obj_state.update(delta_state=env_deltas)
 
         # generate N objects' APIs
@@ -301,112 +332,85 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     return 1
 
 
-def generate_single_agent(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, min=-1, max=1):
+def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=100, min=-1, max=1):
 
-    # N: number of objects
+    # N: number of objects. N=joint number here. ignore the input param N.
     # K: number of features
     # A: API list. Q = lenth(A)
     # T: number of time steps
-    born_area_min = -50
-    born_area_max = 50
+    born_area_min = -30
+    born_area_max = 30
+    env_flag = True
+    env_noise_rate = 0.1
+    other_flag = True
 
-    # franka 机械臂 joints, 0=x, 1=y, 2=z
-    franka = {
-        "panda_link1": {
-            "init": [0,0,0],
-            "control": 2,  # z axis
-            "range": [0, 85],
-        },
-        "panda_link2": {
-            "init": [-90,0,0],
-            "control": 2,  # z axis
-            "range": [-30, 30],
-        },
-        "panda_link3": {
-            "init": [90,0,0],
-            "control": 2,  # z axis
-            "range": [0, 85],
-        },
-        "panda_link4": {
-            "init": [90,0,0],
-            "control": 2,  # z axis
-            "range": [0, 75],
-        },
-        "panda_link5": {
-            "init": [-90,0,0],
-            "control": 2,  # z axis
-            "range": [0, 85],
-        },
-        "panda_link6": {
-            "init": [90,0,0],
-            "control": 2,  # z axis
-            "range": [-85, 0],
-        },
-        "panda_link7": {
-            "init": [90,0,0],
-            "control": 2,  # z axis
-            "range": [-80, -30],
-        },
-        "panda_leftfinger": {
-            "init": [0,0,0],
-            "control": 0,  # x axis
-            "range": [-20, 0],
-        },
-        "panda_rightfinger": {
-            "init": [0,0,0],
-            "control": 0,  # x axis
-            "range": [0, 20],
-        }
-    }
-
-    # prepare columns.
+    # calculate overall body
     K = K_end - K_start
+    N_joints = franka.keys().__len__()  # =9
+    all_data = np.zeros((N, N_joints, T+1, K))
+    # 设置N个机械臂的出生位置
+    born_spots = np.random.rand(N, 2) * (born_area_max - born_area_min) + born_area_min
+    # 初始化每个机械臂的状态
+    all_init_states = np.zeros((N, N_joints, K))
+    for k in range(K):
+        # initialize franka joints
+        for idx in range(N):
+            for i in range(N_joints):
+                _key = list(franka.keys())[i]
+                all_init_states[idx, i, k] = franka[_key]["init"][franka[_key]["control"]]
+        all_data[:, :, 0, k] = all_init_states[:, :, k].copy()
+    obj_state = [State(init_state=_state) for _state in all_init_states]
+
+    # initiate other agent apis
+    other_APIs = [generate_rotation_api(Q=len(APIs)-1, N=N_joints, agent_range=franka, O=N_joints, K=K)
+                  for i in range(N-1)]  # len=((N-1), Q)
+    all_APIs = [APIs] + other_APIs
+    if other_flag:
+        all_API_list = [APIlist] + [np.random.choice(a=len(APIs), size=T) for i in range(N-1)]  # len=(N, T)
+    else:
+        all_API_list = [APIlist] + [np.zeros(T) for i in range(N-1)]
+                
+    for t in range(1,T+1):
+        # call apis
+        for n in range(N):
+            api_id = all_API_list[n][t-1]
+            obj_state[n].call_api(api=all_APIs[n][api_id])
+
+            # env affect
+            if env_flag:
+                for joint_idx in range(N_joints):
+                    _key = list(franka.keys())[joint_idx]
+                    _max = franka[_key]["range"][1]
+                    _min = franka[_key]["range"][0]
+                    _delta = (np.random.rand(1)-0.5) * (_max - _min) * env_noise_rate
+                    obj_state[n].state[joint_idx] += _delta
+
+            # save to all_data
+            all_data[n, :, t, :] = obj_state[n].state.copy()
+    
+    # save simulated data
+    print("save to %s" % save_path)
+    # prepare columns.
     columns = []
     for t in range(T+1):
         columns.append("V%s" % str(t))
-    indexes = []
-    for n in range(N):
-        indexes.append("O%s" % str(n+1))
-
-    dfs = []
-    born_spots = np.random.rand(N, 2) * (born_area_max - born_area_min) + born_area_min
-    init_states = np.zeros((N, K))
-    for k in range(K_start, K_end):
-        dfs.append(pd.DataFrame(columns=columns, index=indexes))
-        # initialize
-        init_states[:, k] = np.random.randint(low=0, high=2, size=(N))
-        dfs[k].loc[:, "V0"] = init_states[:, k].copy()
-    obj_state = State(init_state=init_states)
-
-    for t in range(1,T+1):
-        # # generate N objects' features
-        # env_deltas = np.random.rand(N, K) * (max - min) + min
-        # obj_state.update(delta_state=env_deltas)
-
-        # generate N objects' APIs
-        api_id = APIlist[t-1]
-
-        # call APIs once every time step
-        obj_state.call_api(api=APIs[api_id])
-
-        # check validation, cut those more than 1
-        obj_state.state[np.where(obj_state.state > 0)] = 1
-        obj_state.state[np.where(obj_state.state < 0)] = 0
-
-        # save to dataframe
-        for k in range(K_start, K_end):
-            dfs[k].loc[:, "V%s" % str(t)] = obj_state.state[:, k].copy()
-    
-    # print(dfs[0])
-
-    print("save to %s" % save_path)
-    # for k in range(K_start, K_end):
-    #     _path = save_path + "/feature_{0}.xlsx".format(str(k+1))
-    #     dfs[k].to_excel(_path, sheet_name="Sheet1")
-    # save json for liang
-    for k in range(K_start, K_end):
-        _path = save_path + "/feature_{0}.json".format(str(k+1))
-        dfs[k].to_json(_path, force_ascii=False, indent=4)
+    # choose one and assigned it to the agent.
+    idx = np.arange(N)
+    np.random.shuffle(idx)
+    my_agent_id = idx[0]
+    all_data[idx, :, :, :] = all_data
+    # save excel for R
+    for k in range(K):
+        _path = save_path + "/feature_{0}.xlsx".format(str(k+K_start+1))
+        _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
+        df = pd.DataFrame(_data, columns=columns)
+        df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
+    # save csv for xiaoxiao
+    for k in range(K):
+        _path = save_path + "/feature_{0}.csv".format(str(k+K_start+1))
+        _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
+        df = pd.DataFrame(_data, columns=columns)
+        df.to_csv(_path, index=False) #, sheet_name="feature_{0}".format(str(k+K_start+1)))
 
     # save ground truth
     ran = [[N],
@@ -418,19 +422,26 @@ def generate_single_agent(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=
     for k in range(K):
         _obj_ids_per_feature = []
         for api in APIs:
-            _obj_ids_per_feature.append(api.object_ids)
+            _obj_id = [int(my_agent_id * N_joints + _id) for _id in api.object_ids]
+            _obj_ids_per_feature.append(_obj_id)
         list_data.append(_obj_ids_per_feature[1:])  # ignore first api
-    # for api in APIs:
-    #     _obj_ids_per_feature = []
-    #     for k in range(K):
-    #         _obj_ids_per_feature.append(api.object_ids)
-    #     list_data.append(_obj_ids_per_feature)
+
+    # calculate all body
+    # save api gt
+    api_gt = []
+    all_body = set()
+    for api in APIs[1:]:
+        _obj_id = [int(my_agent_id * N_joints + _id) for _id in api.object_ids]
+        all_body |= set(_obj_id)
+        api_gt.append(api.to_dict())
+    api_gt.append(list(all_body))
+    api_gt.append([int(my_agent_id)])
+    json.dump(api_gt, open(save_path + "/api_gt.json", "w"), indent=4)
     json.dump(born_spots.tolist(), open(save_path + "/born_spots.json", "w"), indent=4)
     json.dump(ran, open(save_path + "/ran.json", "w"), indent=4)
     json.dump(list_data, open(save_path + "/list_data.json", "w"), indent=4)
 
-
-    return 1
+    return
 
 
 def data_simulator(scene):
@@ -448,9 +459,11 @@ def data_simulator(scene):
         for _scene in scene:
             if "2d" in _scene:
                 K = 2
-            elif "3d" in _scene:
+            elif "3d_position" in _scene:
                 K = 3
             if "light" in _scene:
+                K = 1
+            if "rotation" in _scene:
                 K = 1
 
             if "light" in _scene:
@@ -458,7 +471,8 @@ def data_simulator(scene):
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_light(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
             elif "rotation" in _scene:
-                APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=True)
+                N_joints = franka.keys().__len__()  # =9
+                APIs = generate_rotation_api(Q=Q, N=N_joints, agent_range=franka, O=N_joints, K=K)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
             else:
@@ -546,6 +560,10 @@ if __name__ == "__main__":
     # 设置随机种子
     np.random.seed(7)
     
+    # 读取单智能体设定
+    # franka 机械臂 joints, 0=x, 1=y, 2=z
+    franka = json.load(open("./utils/franka.json", "r")) 
+
     for scene in scenes:
         data_simulator(scene)
         # evaluate(scene)

@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import json
 import glob
+import csv
 
 # description:
 # Q: How to test the accuracy of the algorithm?
@@ -399,12 +400,12 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
     np.random.shuffle(idx)
     my_agent_id = idx[0]
     all_data[idx, :, :, :] = all_data
-    # save excel for R
-    for k in range(K):
-        _path = save_path + "/feature_{0}.xlsx".format(str(k+K_start+1))
-        _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
-        df = pd.DataFrame(_data, columns=columns)
-        df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
+    # # save excel for R
+    # for k in range(K):
+    #     _path = save_path + "/feature_{0}.xlsx".format(str(k+K_start+1))
+    #     _data = all_data[:, :, :, k].reshape(N*N_joints, T+1)
+    #     df = pd.DataFrame(_data, columns=columns)
+    #     df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
     # save csv for xiaoxiao
     for k in range(K):
         _path = save_path + "/feature_{0}.csv".format(str(k+K_start+1))
@@ -494,7 +495,9 @@ def evaluate(scene):
     all_precision = []
     all_spec = []
     all_F1 = []
+    scene_name = ""
     for _scene in scene:
+        scene_name = scene_name + _scene + '_'
         result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
         for result_pth in result_pths:
             # clear
@@ -513,7 +516,7 @@ def evaluate(scene):
             # load prediction result
             pred = json.load(open(result_pth, "r"))
             
-            for api_id in range(len(gt_list) - 1):
+            for api_id in range(sum(type(gt) is dict for gt in gt_list)):
                 pred_obj = set()
                 for k in range(len(pred)):
                     _pred_array = np.array(pred[k])
@@ -521,8 +524,8 @@ def evaluate(scene):
                     pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
                 # calculate metircs
                 TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
-                pred_F = range(N) - pred_obj
-                F_gt = range(N) - set(gt_list[api_id]["object_ids"])
+                pred_F = set(range(N)) - pred_obj
+                F_gt = set(range(N)) - set(gt_list[api_id]["object_ids"])
                 FP_list = pred_F & F_gt
                 FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
                 # acc
@@ -554,8 +557,18 @@ def evaluate(scene):
             #                                                             np.mean(recall_per_round), 
             #                                                             np.mean(precision_per_round)))
     
-        print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
-        metrics = 
+    print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
+    metrics = [
+        np.mean(all_acc),
+        np.mean(all_recall),
+        np.mean(all_precision),
+        np.mean(all_spec),
+        np.mean(all_F1)
+    ]
+    
+    with open("./results/{0}metrics.csv".format(scene_name), "w") as f:
+        writer = csv.writer(f)
+        writer.writerow(metrics)
 
                     
 

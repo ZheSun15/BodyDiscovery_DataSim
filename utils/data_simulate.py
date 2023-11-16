@@ -433,6 +433,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
     for api in APIs[1:]:
         _obj_id = [int(my_agent_id * N_joints + _id) for _id in api.object_ids]
         all_body |= set(_obj_id)
+        api.object_ids = [int(my_agent_id * N_joints + _id) for _id in api.object_ids]
         api_gt.append(api.to_dict())
     api_gt.append(list(all_body))
     api_gt.append([int(my_agent_id)])
@@ -491,7 +492,7 @@ def evaluate(scene):
     all_acc = []
     all_recall = []
     all_precision = []
-    all_AP = []
+    all_spec = []
     all_F1 = []
     for _scene in scene:
         result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
@@ -500,7 +501,7 @@ def evaluate(scene):
             acc_per_round = []
             recall_per_round = []
             precision_per_round = []
-            AP_per_round = []
+            spec_per_round = []
             F1_per_round = []
 
             file_name = result_pth.split("/")[-1]
@@ -523,28 +524,38 @@ def evaluate(scene):
                 pred_F = range(N) - pred_obj
                 F_gt = range(N) - set(gt_list[api_id]["object_ids"])
                 FP_list = pred_F & F_gt
+                FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
                 # acc
                 _acc = (len(TP_list) + len(FP_list)) / N
                 acc_per_round.append(_acc)
                 all_acc.append(_acc)
                 # recall
                 _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
-                all_recall.append(_recall)
                 recall_per_round.append(_recall)
+                all_recall.append(_recall)
                 # precision
-
                 if len(pred_obj) == 0:
-                    all_precision.append(0)
                     precision_per_round.append(0)
+                    all_precision.append(0)
                 else:
-                    all_precision.append(len(TP_list)/len(pred_obj))
                     precision_per_round.append(len(TP_list)/len(pred_obj))
+                    all_precision.append(len(TP_list)/len(pred_obj))
+                # specificity
+                _spec = len(FP_list) / len(F_gt)
+                spec_per_round.append(_spec)
+                all_spec.append(_spec)
+                # F1
+                _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                F1_per_round.append(_f1)
+                all_F1.append(_f1)
+
             
             # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
             #                                                             np.mean(recall_per_round), 
             #                                                             np.mean(precision_per_round)))
     
         print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
+        metrics = 
 
                     
 

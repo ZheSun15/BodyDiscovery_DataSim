@@ -156,6 +156,12 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
     for k in range(K_start, K_end):
         _path = save_path + "/feature_{0}.xlsx".format(str(k+1))
         dfs[k].to_excel(_path, sheet_name="Sheet1")
+    
+    # save csv for xiaoxiao
+    for k in range(K_start, K_end):
+        _path = save_path + "/feature_{0}.csv".format(str(k+1))
+        dfs[k].to_csv(_path, sheet_name="feature_{0}".format(str(k+1)))
+
 
     
     # save ground truth
@@ -304,6 +310,55 @@ def generate_single_agent(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=
     born_area_min = -50
     born_area_max = 50
 
+    # franka 机械臂 joints, 0=x, 1=y, 2=z
+    franka = {
+        "panda_link1": {
+            "init": [0,0,0],
+            "control": 2,  # z axis
+            "range": [0, 85],
+        },
+        "panda_link2": {
+            "init": [-90,0,0],
+            "control": 2,  # z axis
+            "range": [-30, 30],
+        },
+        "panda_link3": {
+            "init": [90,0,0],
+            "control": 2,  # z axis
+            "range": [0, 85],
+        },
+        "panda_link4": {
+            "init": [90,0,0],
+            "control": 2,  # z axis
+            "range": [0, 75],
+        },
+        "panda_link5": {
+            "init": [-90,0,0],
+            "control": 2,  # z axis
+            "range": [0, 85],
+        },
+        "panda_link6": {
+            "init": [90,0,0],
+            "control": 2,  # z axis
+            "range": [-85, 0],
+        },
+        "panda_link7": {
+            "init": [90,0,0],
+            "control": 2,  # z axis
+            "range": [-80, -30],
+        },
+        "panda_leftfinger": {
+            "init": [0,0,0],
+            "control": 0,  # x axis
+            "range": [-20, 0],
+        },
+        "panda_rightfinger": {
+            "init": [0,0,0],
+            "control": 0,  # x axis
+            "range": [0, 20],
+        }
+    }
+
     # prepare columns.
     K = K_end - K_start
     columns = []
@@ -401,37 +456,45 @@ def data_simulator(scene):
             if "light" in _scene:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=True)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_light(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T)
+                generate_light(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
             elif "rotation" in _scene:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=True)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T)
+                generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
             else:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=20, K_start=0, K_end=K, T=T, min=-1, max=1)
+                generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T, min=-1, max=1)
 
 
 def evaluate(scene):
 
-    p_th = 0.01
+    p_th = 0.05
 
     prediction_root = "./prediction"
     gt_root = "./data"
 
+    all_acc = []
     all_recall = []
     all_precision = []
+    all_AP = []
+    all_F1 = []
     for _scene in scene:
         result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
         for result_pth in result_pths:
             # clear
+            acc_per_round = []
             recall_per_round = []
             precision_per_round = []
+            AP_per_round = []
+            F1_per_round = []
 
             file_name = result_pth.split("/")[-1]
             # find ground truth path
             gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
             gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+            ran = json.load(open(gt_folder + "/ran.json", "r"))
+            N = ran[0][0]
             # load prediction result
             pred = json.load(open(result_pth, "r"))
             
@@ -441,10 +504,21 @@ def evaluate(scene):
                     _pred_array = np.array(pred[k])
                     _p = _pred_array[:, api_id]
                     pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
-                # recall
+                # calculate metircs
                 TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
-                all_recall.append(len(TP_list)/len(gt_list[api_id]["object_ids"]))
-                recall_per_round.append(len(TP_list)/len(gt_list[api_id]["object_ids"]))
+                pred_F = range(N) - pred_obj
+                F_gt = range(N) - set(gt_list[api_id]["object_ids"])
+                FP_list = pred_F & F_gt
+                # acc
+                _acc = (len(TP_list) + len(FP_list)) / N
+                acc_per_round.append(_acc)
+                all_acc.append(_acc)
+                # recall
+                _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
+                all_recall.append(_recall)
+                recall_per_round.append(_recall)
+                # precision
+
                 if len(pred_obj) == 0:
                     all_precision.append(0)
                     precision_per_round.append(0)
@@ -452,21 +526,21 @@ def evaluate(scene):
                     all_precision.append(len(TP_list)/len(pred_obj))
                     precision_per_round.append(len(TP_list)/len(pred_obj))
             
-            print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
-                                                                        np.mean(recall_per_round), 
-                                                                        np.mean(precision_per_round)))
+            # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
+            #                                                             np.mean(recall_per_round), 
+            #                                                             np.mean(precision_per_round)))
     
-    print("recall: {0}, \n precision: {1}".format(all_recall, all_precision))
+        print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
 
                     
 
 
 if __name__ == "__main__":
     scenes = [
-        # ["3d_rotation"],  # 单智能体
-        ["2d_position"],
-        ["3d_position"],
-        ["light"]
+        ["3d_rotation"],  # 单智能体
+        # ["2d_position"],
+        # ["3d_position"],
+        # ["light"]
     ]
 
     # 设置随机种子

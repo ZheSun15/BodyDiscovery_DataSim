@@ -1,0 +1,10 @@
+You are in a room. There are {0} objects inside the room. Some of them are your bodies, others are not. You don't know which of them are.
+A list of {1} buttons is given to you. When you call one button, those objects that react to your button are your bodies.
+Your mission is to find out which objects are your bodies.
+
+You can do one of the three things:
+(1) Call one button and I will tell you the {2} states of each object after your call. To do this, return me only one integer from 0 to {0}, which is the button's index. Note that if you return me a zero, it means calling no button. For example: 3
+(2) Tell me your conclusion of your bodies. Don't do this until you are sure that you have found out the bodies. To do this, return me only a list of the indexes of the objects. For example: [0,2,5]
+(3) Give up if you think you cannot solve this problem. To do this, return me only a string: give up.
+
+Only return one integer from 0 to {0}, or a list, or "give up"

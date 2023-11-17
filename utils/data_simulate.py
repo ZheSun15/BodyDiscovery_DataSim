@@ -30,23 +30,11 @@ class State():
     def update(self, delta_state):
         self.state += delta_state
     
-    def call_api(self, api):
+    def call_api(self, api, K_start=0, K_end=-1):
+        if K_end == -1:
+            K_end = self.K
         for id in range(len(api.object_ids)):
-            self.state[api.object_ids[id], :] += api.deltas[id, :]
-
-
-class Light_State():
-    def __init__(self, init_state):
-        self.state = init_state
-        self.N = init_state.shape[0]
-        self.K = init_state.shape[1]
-    
-    def update(self, delta_state):
-        self.state += delta_state
-    
-    def call_api(self, api):
-        for id in range(len(api.object_ids)):
-            self.state[api.object_ids[id], :] += api.deltas[id, :]
+            self.state[api.object_ids[id], K_start:K_end] += api.deltas[id, :]
 
 
 class API():
@@ -251,7 +239,7 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     obj_state = State(init_state=init_states)
 
     for t in range(1,T+1):
-        # generate N objects' features
+        # generate env noise
         env_affect_num = np.random.randint(low=1, high=N)
         affect_list = np.random.choice(a=N, size=env_affect_num, replace=False)
         env_deltas = np.random.choice(a=[-1,1], size=(env_affect_num, K))
@@ -333,7 +321,7 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     return 1
 
 
-def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=100, min=-1, max=1):
+def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=100, min=-1, max=1):
 
     # N: number of objects. N=joint number here. ignore the input param N.
     # K: number of features
@@ -381,8 +369,8 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
             if env_flag:
                 for joint_idx in range(N_joints):
                     _key = list(franka.keys())[joint_idx]
-                    _max = franka[_key]["range"][1]
                     _min = franka[_key]["range"][0]
+                    _max = franka[_key]["range"][1]
                     _delta = (np.random.rand(1)-0.5) * (_max - _min) * env_noise_rate
                     obj_state[n].state[joint_idx] += _delta
 
@@ -446,8 +434,82 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
     return
 
 
-def state_init(scene):
-    pass
+def state_init(scene, N, K, agent_range=None):
+    born_area_min = -50
+    born_area_max = 50
+    if "position" in scene:
+        new_state = np.random.rand(N, K) * (born_area_max - born_area_min) + born_area_min
+    elif "light" in scene:
+        new_state = np.random.randint(low=0, high=2, size=(N, K))
+    elif "rotation" in scene:
+        if agent_range == None:
+            agent_range = franka
+        N_joints = agent_range.keys().__len__()  # =9
+        new_state = np.zeros((N, N_joints, K))
+        for k in range(K):
+            # initialize agent joints
+            for idx in range(N):
+                for i in range(N_joints):
+                    _key = list(franka.keys())[i]
+                    new_state[idx, i, k] = franka[_key]["init"][franka[_key]["control"]]
+        new_state = new_state.reshape((N*N_joints, K))
+    
+    return new_state
+
+
+def API_init(Q, N, scene_list):
+    # generage api pool
+    N_joints = franka.keys().__len__()
+    API_pool = {
+        "2d_position": generate_api(Q=Q, N=N, O=N, K=2, min=-1, max=1, int_flag=False),
+        "3d_position": generate_api(Q=Q, N=N, O=N, K=3, min=-1, max=1, int_flag=False),
+        "light": generate_api(Q=Q, N=N, O=N, K=1, min=-1, max=1, int_flag=True),
+        "3d_rotation": generate_rotation_api(Q=Q, N=N_joints, agent_range=franka, O=N_joints, K=1)
+    }
+
+    # choose api from the pool
+    APIs_idonly = np.random.randint(low=0, high=(Q+1), size=(Q, len(scene_list)))  # choose Q apis for each scene
+    
+    return API_pool, APIs_idonly
+
+
+def update_state(api, object_state, scene_label, K_start, K_end, env_flag, noise_range, agent_range=None):
+    N = object_state.N
+    K = object_state.K
+    # call apis
+    object_state.call_api(api=api, K_start=K_start, K_end=K_end)
+    if "light" in scene_label:
+        # check validation, cut those more than 1
+        object_state.state[np.where(object_state.state > 0)] = 1
+        object_state.state[np.where(object_state.state < 0)] = 0
+
+    # env affect
+    if env_flag:
+        if "3d_rotation" in scene_label:
+            if agent_range == None:
+                agent_range = franka
+            N_joints = agent_range.keys().__len__()
+            for joint_idx in range(N_joints):
+                _key = list(agent_range.keys())[joint_idx]
+                _max = agent_range[_key]["range"][1]
+                _min = agent_range[_key]["range"][0]
+                _delta = (np.random.rand(1)-0.5) * (_max - _min) * noise_range
+                object_state.state[joint_idx] += _delta
+        elif "position" in scene_label:
+            env_deltas = (np.random.rand(N, K)-0.5) * noise_range
+            object_state.update(delta_state=env_deltas)
+        elif "light" in scene_label:
+            # generate env noise
+            env_affect_num = np.random.randint(low=1, high=N)
+            affect_list = np.random.choice(a=N, size=env_affect_num, replace=False)
+            env_deltas = np.random.choice(a=[-1,1], size=(env_affect_num, K))
+            for idx in range(env_affect_num):
+                object_state.state[affect_list[idx]] += env_deltas[idx]
+            # check validation, cut those more than 1
+            object_state.state[np.where(object_state.state > 0)] = 1
+            object_state.state[np.where(object_state.state < 0)] = 0
+
+    return object_state
 
 
 def data_simulator(scene):
@@ -456,7 +518,7 @@ def data_simulator(scene):
     for r in range(Round):
         # initialization
         Q = 10
-        N = 20
+        N = 3  # 3 or 5 for single agent
         T = 1000
         save_path = "./data/{0}_round{1}".format(scene[0], str(r))
         if not os.path.exists(save_path):
@@ -487,61 +549,60 @@ def data_simulator(scene):
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T, min=-1, max=1)
         else:
-            # generage api pool
-            N_joints = franka.keys().__len__()
-            API_pool = {
-                "2d_position": generate_api(Q=Q, N=N, O=N, K=2, min=-1, max=1, int_flag=False),
-                "3d_position": generate_api(Q=Q, N=N, O=N, K=3, min=-1, max=1, int_flag=False),
-                "light": generate_api(Q=Q, N=N, O=N, K=1, min=-1, max=1, int_flag=True)
-            }
+            pass
+            # API_pool, APIs_idonly = API_init()
+            
+            # pool_APIlist = np.random.choice(a=Q, size=T)  # API id = 0, don't call API
 
-            # choose api from the pool
-            APIs_ids = np.random.randint(low=0, high=(Q+1), size=(Q, len(scene)))  # Q apis for each scene
-            pool_APIlist = np.random.choice(a=Q, size=T)  # API id = 0, don't call API
+            # # calculate total feature number
+            # K_dict = {
+            #     "2d_position": 2,
+            #     "3d_position": 3,
+            #     "light": 1
+            # }
+            # K_total = 0
+            # for _scene in scene:
+            #     K_total += K_dict[_scene]
+            # # init states
+            # init_states = np.zeros((len(scene), N, K_total))
+            # K_start = 0
+            # for _scene in scene:
+            #     scene_id = scene.index(_scene)
+            #     _K = K_dict[_scene]
+            #     init_states[scene_id, :, K_start:(K_start + _K)] = state_init(_scene, _K)  # (N, _K)
+            #     K_start += _K
+            # obj_states = [State(init_state=_state) for _state in init_states]
 
-            # calculate total feature number
-            K_dict = {
-                "2d_position": 2,
-                "3d_position": 3,
-                "light": 1
-            }
-            K_total = 0
-            for _scene in scene:
-                K_total += K_dict[_scene]
-            # init states
-            init_states = np.zeros((len(scene), N, K_total))
-            K_start = 0
-            for _scene in scene:
-                scene_id = scene.index(_scene)
-                _K = K_dict[_scene]
-                if "light" in _scene:
-                    init_states[scene_id, :, K_start:(K_start + _K)] = light_state_init(_scene)  # (N, _K)
-                else:
-                    init_states[scene_id, :, K_start:(K_start + _K)] = position_state_init(_scene, _K)
-
-            # generate data
-            for _scene in scene:
-                scene_id = scene.index(_scene)
-                _APIs = [API_pool[_scene][api_id] for api_id in APIs_ids[:, scene_id]]
-                _APIlist = [APIs_ids[pool_id, scene_id] for pool_id in pool_APIlist]
-                K = K_dict[_scene]               
+            # # generate data
+            # for _scene in scene:
+            #     scene_id = scene.index(_scene)
+            #     _APIs = [API_pool[_scene][api_id] for api_id in APIs_idonly[:, scene_id]]
+            #     _APIlist = [APIs_idonly[pool_id, scene_id] for pool_id in pool_APIlist]
+            #     K = K_dict[_scene]               
                 
-                if "light" in _scene:
-                    update_lights(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T)
-                else:
-                    update_3d_positions(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T, min=-1, max=1)
+            #     obj_states[scene_id] = update_state(_api, obj_states[scene_id], _scene, K_start=K_start, K_end=K_end, noise_range=noise_range)
 
-            # save data
+            #     if "light" in _scene:
+            #         update_lights(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T)
+            #     else:
+            #         update_3d_positions(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T, min=-1, max=1)
 
-
+            # # save data
 
 
 
 def evaluate(scene):
+    evaluate_style = "effect"
+    ths = [2.5758293035489004, 1.959963984540054]  # 0.01, 0.05, k=1
+    # ths = [2.807033768343811, 2.241402727604947]# 0.01, 0.05, k=2
+    # ths = [2.935199468866699, 2.3939797998185104] # 0.01, 0.05, k=3
+    effect_flag = True
 
-    p_ths = [0.05/(20*10*1)]#[0.01, 0.05]
+    # evaluate_style = "p"
+    # ths = [0.05/(20*10*1)]#[0.01, 0.05]
+    # effect_flag = False
 
-    for p_th in p_ths:
+    for th in ths:
         prediction_root = "./prediction"
         gt_root = "./data"
 
@@ -553,7 +614,8 @@ def evaluate(scene):
         scene_name = ""
         for _scene in scene:
             scene_name = scene_name + _scene + '_'
-            result_pths = sorted(glob.glob(prediction_root + "/{0}_*_plist.json".format(_scene)))
+            # load prediction result
+            result_pths = sorted(glob.glob(prediction_root + "/{0}_*_{1}list.json".format(_scene, evaluate_style)))
             for result_pth in result_pths:
                 # clear
                 acc_per_round = []
@@ -564,19 +626,32 @@ def evaluate(scene):
 
                 file_name = result_pth.split("/")[-1]
                 # find ground truth path
-                gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_plist.json", ""))
+                gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_{0}list.json".format(evaluate_style), ""))
                 gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
                 ran = json.load(open(gt_folder + "/ran.json", "r"))
                 N = ran[0][0]
                 # load prediction result
-                pred = json.load(open(result_pth, "r"))
+                pred = json.load(open(result_pth, "r"))  # len=(N, Q, K)
+                if effect_flag:
+                    # convert to ndarray
+                    pred_array = np.array(pred)
+                    # mean of all N*Q*K
+                    mean_eff = np.mean(pred_array)
+                    # various
+                    var_eff = np.var(pred_array, ddof=1)
+                    eff_min = mean_eff - th*var_eff
+                    eff_max = mean_eff + th*var_eff
                 
                 for api_id in range(sum(type(gt) is dict for gt in gt_list)):
                     pred_obj = set()
                     for k in range(len(pred)):
                         _pred_array = np.array(pred[k])
                         _p = _pred_array[:, api_id]
-                        pred_obj = set(np.where(_p < p_th)[0]) | pred_obj
+                        if effect_flag:
+                            pred_obj = set(np.where(np.logical_or(_p < eff_min, _p > eff_max))[0]) | pred_obj
+                            pass
+                        else:
+                            pred_obj = set(np.where(_p < th)[0]) | pred_obj
                     # calculate metircs
                     TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
                     pred_F = set(range(N)) - pred_obj
@@ -622,32 +697,30 @@ def evaluate(scene):
             np.mean(all_F1)
         ]
         
-        with open("./results/{0}p{1}_metrics.csv".format(scene_name, p_th), "w") as f:
+        with open("./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
             writer = csv.writer(f)
             writer.writerow(metrics)
 
                     
-
+    
+# 读取单智能体设定
+# franka 机械臂 joints, 0=x, 1=y, 2=z
+franka = json.load(open("./utils/franka.json", "r")) 
+# 设置随机种子
+np.random.seed(7)
 
 if __name__ == "__main__":
     scenes = [
-        # ["3d_rotation"],  # 单智能体
+        ["3d_rotation"],  # 单智能体
         # ["2d_position"],
         # ["3d_position"],
-        ["light"],
+        # ["light"],
         # ["2d_position", "light"],
         # ["3d_position", "light"],
         # ["2d_position", "3d_position"],
         # ["2d_position", "3d_position", "light"]
     ]
 
-    # 设置随机种子
-    np.random.seed(7)
-    
-    # 读取单智能体设定
-    # franka 机械臂 joints, 0=x, 1=y, 2=z
-    franka = json.load(open("./utils/franka.json", "r")) 
-
     for scene in scenes:
-        # data_simulator(scene)
-        evaluate(scene)
+        data_simulator(scene)
+        # evaluate(scene)

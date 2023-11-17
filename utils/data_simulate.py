@@ -446,6 +446,10 @@ def generate_single_agent(save_path, APIs, APIlist, N=9, K_start=0, K_end=1, T=1
     return
 
 
+def state_init(scene):
+    pass
+
+
 def data_simulator(scene):
     Round = 10
 
@@ -458,7 +462,8 @@ def data_simulator(scene):
         if not os.path.exists(save_path):
             os.mkdir(save_path)
         
-        for _scene in scene:
+        if len(scene) == 1:
+            _scene = scene[0]
             if "2d" in _scene:
                 K = 2
             elif "3d_position" in _scene:
@@ -481,11 +486,60 @@ def data_simulator(scene):
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
                 APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T, min=-1, max=1)
+        else:
+            # generage api pool
+            N_joints = franka.keys().__len__()
+            API_pool = {
+                "2d_position": generate_api(Q=Q, N=N, O=N, K=2, min=-1, max=1, int_flag=False),
+                "3d_position": generate_api(Q=Q, N=N, O=N, K=3, min=-1, max=1, int_flag=False),
+                "light": generate_api(Q=Q, N=N, O=N, K=1, min=-1, max=1, int_flag=True)
+            }
+
+            # choose api from the pool
+            APIs_ids = np.random.randint(low=0, high=(Q+1), size=(Q, len(scene)))  # Q apis for each scene
+            pool_APIlist = np.random.choice(a=Q, size=T)  # API id = 0, don't call API
+
+            # calculate total feature number
+            K_dict = {
+                "2d_position": 2,
+                "3d_position": 3,
+                "light": 1
+            }
+            K_total = 0
+            for _scene in scene:
+                K_total += K_dict[_scene]
+            # init states
+            init_states = np.zeros((len(scene), N, K_total))
+            K_start = 0
+            for _scene in scene:
+                scene_id = scene.index(_scene)
+                _K = K_dict[_scene]
+                if "light" in _scene:
+                    init_states[scene_id, :, K_start:(K_start + _K)] = light_state_init(_scene)  # (N, _K)
+                else:
+                    init_states[scene_id, :, K_start:(K_start + _K)] = position_state_init(_scene, _K)
+
+            # generate data
+            for _scene in scene:
+                scene_id = scene.index(_scene)
+                _APIs = [API_pool[_scene][api_id] for api_id in APIs_ids[:, scene_id]]
+                _APIlist = [APIs_ids[pool_id, scene_id] for pool_id in pool_APIlist]
+                K = K_dict[_scene]               
+                
+                if "light" in _scene:
+                    update_lights(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T)
+                else:
+                    update_3d_positions(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T, min=-1, max=1)
+
+            # save data
+
+
+
 
 
 def evaluate(scene):
 
-    p_ths = [0.01, 0.05]
+    p_ths = [0.05/(20*10*1)]#[0.01, 0.05]
 
     for p_th in p_ths:
         prediction_root = "./prediction"
@@ -577,10 +631,14 @@ def evaluate(scene):
 
 if __name__ == "__main__":
     scenes = [
-        ["3d_rotation"],  # 单智能体
-        ["2d_position"],
-        ["3d_position"],
-        ["light"]
+        # ["3d_rotation"],  # 单智能体
+        # ["2d_position"],
+        # ["3d_position"],
+        ["light"],
+        # ["2d_position", "light"],
+        # ["3d_position", "light"],
+        # ["2d_position", "3d_position"],
+        # ["2d_position", "3d_position", "light"]
     ]
 
     # 设置随机种子

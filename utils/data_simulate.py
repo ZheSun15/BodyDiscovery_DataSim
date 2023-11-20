@@ -6,6 +6,7 @@ import os
 import json
 import glob
 import csv
+import matplotlib.pyplot as plt
 
 # description:
 # Q: How to test the accuracy of the algorithm?
@@ -180,7 +181,7 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
     # save csv for xiaoxiao
     for k in range(K_start, K_end):
         _path = save_path + "/feature_{0}.csv".format(str(k+1))
-        dfs[k].to_csv(_path, sheet_name="feature_{0}".format(str(k+1)))
+        dfs[k].to_csv(_path, index=False) #, sheet_name="feature_{0}".format(str(k+1)))
 
 
     
@@ -512,28 +513,30 @@ def update_state(api, object_state, scene_label, K_start, K_end, env_flag, noise
     return object_state
 
 
-def data_simulator(scene):
+def data_simulator(scene, Q, N, T):
     Round = 10
+    K_dict = {
+        "2d_position": 2,
+        "3d_position": 3,
+        "light": 1,
+        "3d_rotation": 1
+    }
+    noise_dict = {
+        "2d_position": 1,
+        "3d_position": 1,
+        "light": 0,
+        "3d_rotation": 0.1
+    }
 
     for r in range(Round):
-        # initialization
-        Q = 10
-        N = 3  # 3 or 5 for single agent
-        T = 1000
-        save_path = "./data/{0}_round{1}".format(scene[0], str(r))
+        
+        save_path = "./data/{0}_round{1}_Q{2}_N{3}_T{4}".format(scene[0], str(r), str(Q), str(N), str(T))
         if not os.path.exists(save_path):
             os.mkdir(save_path)
         
         if len(scene) == 1:
             _scene = scene[0]
-            if "2d" in _scene:
-                K = 2
-            elif "3d_position" in _scene:
-                K = 3
-            if "light" in _scene:
-                K = 1
-            if "rotation" in _scene:
-                K = 1
+            K = K_dict[_scene]
 
             if "light" in _scene:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=True)
@@ -555,11 +558,6 @@ def data_simulator(scene):
             # pool_APIlist = np.random.choice(a=Q, size=T)  # API id = 0, don't call API
 
             # # calculate total feature number
-            # K_dict = {
-            #     "2d_position": 2,
-            #     "3d_position": 3,
-            #     "light": 1
-            # }
             # K_total = 0
             # for _scene in scene:
             #     K_total += K_dict[_scene]
@@ -591,19 +589,19 @@ def data_simulator(scene):
 
 
 
-def evaluate(scene):
-    evaluate_style = "effect"
-    ths = [2.5758293035489004, 1.959963984540054]  # 0.01, 0.05, k=1
-    # ths = [2.807033768343811, 2.241402727604947]# 0.01, 0.05, k=2
-    # ths = [2.935199468866699, 2.3939797998185104] # 0.01, 0.05, k=3
-    effect_flag = True
+def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
+    # evaluate_style = "effect"
+    # ths = [2.5758293035489004, 1.959963984540054]  # 0.01, 0.05, k=1
+    # # ths = [2.807033768343811, 2.241402727604947]# 0.01, 0.05, k=2
+    # # ths = [2.935199468866699, 2.3939797998185104] # 0.01, 0.05, k=3
+    # effect_flag = True
 
-    # evaluate_style = "p"
-    # ths = [0.05/(20*10*1)]#[0.01, 0.05]
-    # effect_flag = False
+    evaluate_style = "p"
+    ths = [0.05/(27*10*1)]  #, 0.01/(27*10*1)]  #[0.01, 0.05]
+    effect_flag = False
 
     for th in ths:
-        prediction_root = "./prediction"
+        prediction_root = "./prediction/S2-S3"
         gt_root = "./data"
 
         all_acc = []
@@ -615,7 +613,14 @@ def evaluate(scene):
         for _scene in scene:
             scene_name = scene_name + _scene + '_'
             # load prediction result
-            result_pths = sorted(glob.glob(prediction_root + "/{0}_*_{1}list.json".format(_scene, evaluate_style)))
+            if ablation_flag:
+                result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_Q{1}_N{2}_T{3}_{4}list.json".format(_scene, 
+                                                                                                                Q,
+                                                                                                                N,
+                                                                                                                T,
+                                                                                                                evaluate_style)))
+            else:
+                result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_{1}list.json".format(_scene, evaluate_style)))
             for result_pth in result_pths:
                 # clear
                 acc_per_round = []
@@ -669,17 +674,21 @@ def evaluate(scene):
                     all_recall.append(_recall)
                     # precision
                     if len(pred_obj) == 0:
-                        precision_per_round.append(0)
-                        all_precision.append(0)
+                        _precision = 0
                     else:
-                        precision_per_round.append(len(TP_list)/len(pred_obj))
-                        all_precision.append(len(TP_list)/len(pred_obj))
+                        _precision = len(TP_list)/len(pred_obj)
+                    precision_per_round.append(_precision)
+                    all_precision.append(_precision)
                     # specificity
                     _spec = len(FP_list) / len(F_gt)
                     spec_per_round.append(_spec)
                     all_spec.append(_spec)
                     # F1
-                    _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                    # _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                    if (_recall + _precision) != 0:
+                        _f1 = 2*_recall*_precision / (_recall + _precision)
+                    else:
+                        _f1 = 0
                     F1_per_round.append(_f1)
                     all_F1.append(_f1)
 
@@ -697,11 +706,106 @@ def evaluate(scene):
             np.mean(all_F1)
         ]
         
-        with open("./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
-            writer = csv.writer(f)
-            writer.writerow(metrics)
+        # with open("./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(metrics)
+        # print("save to ./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th))
 
-                    
+        return metrics
+
+
+def ablation_study(scenes, Q_origin, N_origin, T_origin):
+    # set hyper-parameters
+    ablation_Q = range(2, 21, 2)
+    ablation_N = range(2,13,1)  # 3 or 5 for single agent
+    ablation_T = range(400, 1401, 100)
+
+    for scene in scenes:
+        # test Q
+        N = N_origin
+        T = T_origin
+        for Q in ablation_Q:
+            data_simulator(scene, Q, N, T)
+        
+        # test N
+        Q = Q_origin
+        T = T_origin
+        for N in ablation_N:
+            data_simulator(scene, Q, N, T)
+        
+        # test T
+        Q = Q_origin
+        N = N_origin
+        for T in ablation_T:
+            data_simulator(scene, Q, N, T)
+    
+    return
+
+
+def ablation_plot(metrics_array, ablation_range, xlabel):
+    # 画图
+    # 绘制每列数据的曲线图
+    column_names = [
+        "Accuracy",
+        "Recall",
+        "Precision",
+        "Specificity",
+        "F1 score"
+    ]
+    for i in range(metrics_array.shape[1]):
+        x = ablation_range  # 横坐标值
+        y = metrics_array[:, i]  # 纵坐标值
+
+        # 使用 Matplotlib 绘制曲线图
+        plt.plot(x, y, label=column_names[i])
+
+    plt.xticks(ablation_range)
+
+    # 添加标签和图例
+    plt.xlabel(xlabel)
+    plt.ylabel('Evaluation Metrics')
+    plt.title('')
+    # plt.legend(loc='lower left')
+
+    # 显示图形
+    plt.show()
+
+
+
+def ablation_evaluation(scene, ablation_flag, Q_origin, N_origin, T_origin):
+    # set hyper-parameters
+    ablation_Q = range(2, 21, 2)
+    # ablation_N = range(2, 13, 1)  # 3 or 5 for single agent
+    ablation_N = range(10, 101, 10)
+    ablation_T = range(400, 1401, 100)
+
+    # evaluate Q
+    N = N_origin
+    T = T_origin
+    Q_metrics = []
+    for Q in ablation_Q:
+        Q_metrics.append(evaluate(scene, ablation_flag, Q, N, T))  # shape=(5,)
+    ablation_plot(np.array(Q_metrics), ablation_Q, 'Q')
+    
+    
+    # test N
+    Q = Q_origin
+    T = T_origin
+    N_metrics = []
+    for N in ablation_N:
+        N_metrics.append(evaluate(scene, ablation_flag, Q, N, T))
+    ablation_plot(np.array(N_metrics), ablation_N, 'N')
+    
+    # test T
+    Q = Q_origin
+    N = N_origin
+    T_metrics = []
+    for T in ablation_T:
+        T_metrics.append(evaluate(scene, ablation_flag, Q, N, T))
+    ablation_plot(np.array(T_metrics), ablation_T, 'T')
+    
+    return
+
     
 # 读取单智能体设定
 # franka 机械臂 joints, 0=x, 1=y, 2=z
@@ -711,9 +815,9 @@ np.random.seed(7)
 
 if __name__ == "__main__":
     scenes = [
-        ["3d_rotation"],  # 单智能体
+        # ["3d_rotation"],  # 单智能体
         # ["2d_position"],
-        # ["3d_position"],
+        ["3d_position"],
         # ["light"],
         # ["2d_position", "light"],
         # ["3d_position", "light"],
@@ -721,6 +825,14 @@ if __name__ == "__main__":
         # ["2d_position", "3d_position", "light"]
     ]
 
+    Q_origin = 10
+    # N_origin = 3
+    N_origin = 20
+    T_origin = 1000
+
     for scene in scenes:
-        data_simulator(scene)
-        # evaluate(scene)
+        
+        # data_simulator(scene, Q_origin, N_origin, T_origin)
+        # ablation_study(scene, Q_origin, N_origin, T_origin)
+        # evaluate(scene, ablation_flag=False)
+        ablation_evaluation(scene, ablation_flag=True, Q_origin=Q_origin, N_origin=N_origin, T_origin=T_origin)

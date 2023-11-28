@@ -7,6 +7,8 @@ import json
 import glob
 import csv
 import matplotlib.pyplot as plt
+import random
+import seaborn as sns
 
 # description:
 # Q: How to test the accuracy of the algorithm?
@@ -28,8 +30,10 @@ class State():
         self.N = init_state.shape[0]
         self.K = init_state.shape[1]
     
-    def update(self, delta_state):
-        self.state += delta_state
+    def update(self, delta_state, K_start=0, K_end=-1):
+        if K_end == -1:
+            K_end = self.K
+        self.state[:, K_start:K_end] += delta_state
     
     def call_api(self, api, K_start=0, K_end=-1):
         if K_end == -1:
@@ -123,6 +127,37 @@ def generate_rotation_api(Q, N, agent_range, O=1, K=3):
     return APIs
 
 
+def API_list_generate(Q, T):
+    # 计算每份的长度
+    length = T // Q
+    # 计算余数，用于处理不能整除的情况
+    remainder = T % Q
+    # 生成分组
+    groups = [length] * (Q - remainder) + [length + 1] * remainder
+    random.shuffle(groups)
+
+    APIlist = []
+    for q in range(Q):
+        APIlist += [q] * groups[q]
+    
+    random.shuffle(APIlist)
+
+    return APIlist
+
+
+def check_rotation_state(states, agent_range):
+    N_joints = agent_range.keys().__len__()
+    for i in range(N_joints):
+        _key = list(agent_range.keys())[i]
+        _max = agent_range[_key]["range"][1]
+        _min = agent_range[_key]["range"][0]
+        if states[i] > _max:
+            states[i] = _max
+        elif states[i] < _min:
+            states[i] = _min
+    return states
+
+
 def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1000, min=-1, max=1):
     # N: number of objects
     # K: number of features
@@ -187,7 +222,7 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
     
     # save ground truth
     ran = [[N],
-           APIlist.tolist(),
+           APIlist, #.tolist(),
            [K],
            [len(APIs)-1]
     ]
@@ -206,7 +241,7 @@ def generate_3d_position(save_path, APIs, APIlist, N=20, K_start=0, K_end=3, T=1
     json.dump(api_gt, open(save_path + "/api_gt.json", "w"), indent=4)
 
 
-def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, min=-1, max=1):
+def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mirror_flag=False, min=-1, max=1):
 
     # N: number of objects
     # K: number of features
@@ -228,15 +263,27 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     indexes = []
     for n in range(N):
         indexes.append("O%s" % str(n+1))
+    
+    # pick lights in the mirror
+    N_total = N
+    if mirror_flag:
+        mirror_light_num = np.random.randint(low=0, high=len(all_body))
+        mirror_id_list = np.random.choice(a=all_body, size=mirror_light_num, replace=False)
+        N_total = N + mirror_light_num
 
     dfs = []
-    born_spots = np.random.rand(N, 2) * (born_area_max - born_area_min) + born_area_min
-    init_states = np.zeros((N, K))
+    born_spots = np.random.rand(N_total, 2) * (born_area_max - born_area_min) + born_area_min
+    init_states = np.zeros((N_total, K))
     for k in range(K_start, K_end):
         dfs.append(pd.DataFrame(columns=columns, index=indexes))
         # initialize
-        init_states[:, k] = np.random.randint(low=0, high=2, size=(N))
-        dfs[k].loc[:, "V0"] = init_states[:, k].copy()
+        init_states[:N, k] = np.random.randint(low=0, high=2, size=(N))
+        dfs[k].loc[:N, "V0"] = init_states[:N, k].copy()
+    if mirror_flag:
+        N_id = N
+        for mirrored_id in mirror_id_list:
+            init_states[N_id, k] = init_states[mirrored_id, k]
+            N_id += 1
     obj_state = State(init_state=init_states)
 
     for t in range(1,T+1):
@@ -258,6 +305,12 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
         obj_state.state[np.where(obj_state.state > 0)] = 1
         obj_state.state[np.where(obj_state.state < 0)] = 0
 
+        # if mirror_flag, update mirror lights
+        N_id = N
+        for mirrored_id in mirror_id_list:
+            obj_state[N_id, k] = obj_state[mirrored_id, k]
+            N_id += 1
+
         # save to dataframe
         for k in range(K_start, K_end):
             dfs[k].loc[:, "V%s" % str(t)] = obj_state.state[:, k].copy()
@@ -275,7 +328,7 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
 
     # save ground truth
     ran = [[N],
-           APIlist.tolist(),
+           APIlist, #.tolist(),
            [K],
            [len(APIs)-1]
     ]
@@ -322,7 +375,7 @@ def generate_light(save_path, APIs, APIlist, N=20, K_start=0, K_end=1, T=100, mi
     return 1
 
 
-def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=100, min=-1, max=1):
+def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=100, min=-1, max=1, agent_range=None):
 
     # N: number of objects. N=joint number here. ignore the input param N.
     # K: number of features
@@ -333,6 +386,8 @@ def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=1
     env_flag = True
     env_noise_rate = 0.1
     other_flag = True
+    if agent_range == None:
+        agent_range = franka
 
     # calculate overall body
     K = K_end - K_start
@@ -356,7 +411,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=1
                   for i in range(N-1)]  # len=((N-1), Q)
     all_APIs = [APIs] + other_APIs
     if other_flag:
-        all_API_list = [APIlist] + [np.random.choice(a=len(APIs), size=T) for i in range(N-1)]  # len=(N, T)
+        all_API_list = [APIlist] + [API_list_generate(len(APIs), T) for i in range(N-1)]  # len=(N, T)
     else:
         all_API_list = [APIlist] + [np.zeros(T) for i in range(N-1)]
                 
@@ -365,6 +420,8 @@ def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=1
         for n in range(N):
             api_id = all_API_list[n][t-1]
             obj_state[n].call_api(api=all_APIs[n][api_id])
+            # check validation, cut those more than max
+            obj_state[n].state = check_rotation_state(obj_state[n].state, agent_range)
 
             # env affect
             if env_flag:
@@ -374,6 +431,8 @@ def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=1
                     _max = franka[_key]["range"][1]
                     _delta = (np.random.rand(1)-0.5) * (_max - _min) * env_noise_rate
                     obj_state[n].state[joint_idx] += _delta
+                # check validation, cut those more than max
+                obj_state[n].state = check_rotation_state(obj_state[n].state, agent_range)
 
             # save to all_data
             all_data[n, :, t, :] = obj_state[n].state.copy()
@@ -404,7 +463,7 @@ def generate_single_agent(save_path, APIs, APIlist, N=2, K_start=0, K_end=1, T=1
 
     # save ground truth
     ran = [[N*N_joints],
-           APIlist.tolist(),
+           APIlist, #.tolist(),
            [K],
            [len(APIs)-1]
     ]
@@ -470,13 +529,14 @@ def API_init(Q, N, scene_list):
 
     # choose api from the pool
     APIs_idonly = np.random.randint(low=0, high=(Q+1), size=(Q, len(scene_list)))  # choose Q apis for each scene
+    # APIs_idonly = [API_list_generate(Q+1, Q+1) for i in range(len(scene_list))]  # [scene_num, Q+1]
     
     return API_pool, APIs_idonly
 
 
 def update_state(api, object_state, scene_label, K_start, K_end, env_flag, noise_range, agent_range=None):
     N = object_state.N
-    K = object_state.K
+    K = K_end-K_start
     # call apis
     object_state.call_api(api=api, K_start=K_start, K_end=K_end)
     if "light" in scene_label:
@@ -498,7 +558,7 @@ def update_state(api, object_state, scene_label, K_start, K_end, env_flag, noise
                 object_state.state[joint_idx] += _delta
         elif "position" in scene_label:
             env_deltas = (np.random.rand(N, K)-0.5) * noise_range
-            object_state.update(delta_state=env_deltas)
+            object_state.update(delta_state=env_deltas, K_start=K_start, K_end=K_end)
         elif "light" in scene_label:
             # generate env noise
             env_affect_num = np.random.randint(low=1, high=N)
@@ -513,7 +573,7 @@ def update_state(api, object_state, scene_label, K_start, K_end, env_flag, noise
     return object_state
 
 
-def data_simulator(scene, Q, N, T):
+def data_simulator(scene, Q, N, T, mirror_flag=False):
     Round = 10
     K_dict = {
         "2d_position": 2,
@@ -530,78 +590,153 @@ def data_simulator(scene, Q, N, T):
 
     for r in range(Round):
         
-        save_path = "./data/{0}_round{1}_Q{2}_N{3}_T{4}".format(scene[0], str(r), str(Q), str(N), str(T))
-        if not os.path.exists(save_path):
-            os.mkdir(save_path)
-        
         if len(scene) == 1:
+            save_path = "./data/{0}_round{1}_Q{2}_N{3}_T{4}".format(scene[0], str(r), str(Q), str(N), str(T))
+            if not os.path.exists(save_path):
+                os.mkdir(save_path)
+
             _scene = scene[0]
             K = K_dict[_scene]
 
             if "light" in _scene:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=True)
-                APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
-                generate_light(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
+                APIlist = API_list_generate(len(APIs), T)  #np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
+                generate_light(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T, mirror_flag=mirror_flag)
             elif "rotation" in _scene:
                 N_joints = franka.keys().__len__()  # =9
                 APIs = generate_rotation_api(Q=Q, N=N_joints, agent_range=franka, O=N_joints, K=K)
-                APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
+                APIlist = API_list_generate(len(APIs), T)  #np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_single_agent(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T)
             else:
                 APIs = generate_api(Q=Q, N=N, O=N, K=K, min=-1, max=1, int_flag=False)
-                APIlist = np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
+                APIlist = API_list_generate(len(APIs), T)  #np.random.choice(a=len(APIs), size=T)  # API id = 0, don't call API
                 generate_3d_position(save_path, APIs=APIs, APIlist=APIlist, N=N, K_start=0, K_end=K, T=T, min=-1, max=1)
         else:
-            pass
-            # API_pool, APIs_idonly = API_init()
-            
-            # pool_APIlist = np.random.choice(a=Q, size=T)  # API id = 0, don't call API
+            save_path = "./data/{0}_round{1}_Q{2}_N{3}_T{4}".format('_'.join(scene), str(r), str(Q), str(N), str(T))
+            if not os.path.exists(save_path):
+                os.mkdir(save_path)
+            # pass
+            API_pool, APIs_idonly = API_init(Q=Q, N=N, scene_list=scene)
+            pool_APIlist = API_list_generate(Q, T)  #np.random.choice(a=Q, size=T)  # API id = 0, don't call API
 
-            # # calculate total feature number
-            # K_total = 0
-            # for _scene in scene:
-            #     K_total += K_dict[_scene]
-            # # init states
-            # init_states = np.zeros((len(scene), N, K_total))
-            # K_start = 0
-            # for _scene in scene:
-            #     scene_id = scene.index(_scene)
-            #     _K = K_dict[_scene]
-            #     init_states[scene_id, :, K_start:(K_start + _K)] = state_init(_scene, _K)  # (N, _K)
-            #     K_start += _K
-            # obj_states = [State(init_state=_state) for _state in init_states]
+            # calculate total feature number
+            K_total = 0
+            for _scene in scene:
+                K_total += K_dict[_scene]
+            # init states
+            all_data = np.zeros((len(scene), N, T+1, K_total))
+            init_states = np.zeros((len(scene), N, K_total))
+            K_start = 0
+            for i, _scene in enumerate(scene):
+                K_end = K_start + K_dict[_scene]
+                init_states[i, :, K_start:K_end] = state_init(_scene, N, K_dict[_scene])
+                all_data[i, :, 0, K_start:K_end] = init_states[i, :, K_start:K_end].copy()
+                K_start = K_end
+            obj_states = [State(init_state=_state) for _state in init_states]  # scene_num * (N * K)
 
-            # # generate data
-            # for _scene in scene:
-            #     scene_id = scene.index(_scene)
-            #     _APIs = [API_pool[_scene][api_id] for api_id in APIs_idonly[:, scene_id]]
-            #     _APIlist = [APIs_idonly[pool_id, scene_id] for pool_id in pool_APIlist]
-            #     K = K_dict[_scene]               
-                
-            #     obj_states[scene_id] = update_state(_api, obj_states[scene_id], _scene, K_start=K_start, K_end=K_end, noise_range=noise_range)
+            # generate data
+            for t in range(1, T+1):
+                this_API_id = pool_APIlist[t-1]
+                APIs_ids_to_call = APIs_idonly[this_API_id, :]
+                K_start = 0
+                for scene_id, _scene in enumerate(scene):
+                    K_end = K_start + K_dict[_scene]
+                    _api = API_pool[_scene][APIs_ids_to_call[scene_id]]
+                    noise_range = noise_dict[_scene]
+                    obj_states[scene_id] = update_state(_api, obj_states[scene_id], _scene, K_start=K_start, K_end=K_end, env_flag=True, noise_range=noise_range)
+                    all_data[scene_id, :, t, :] = obj_states[scene_id].state.copy()
+                    K_start = K_end
 
-            #     if "light" in _scene:
-            #         update_lights(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T)
-            #     else:
-            #         update_3d_positions(APIs=_APIs, APIlist=_APIlist, obj_states, scene_id, K_start=0, K_end=K, T=T, min=-1, max=1)
+            # save data
+            print("save to %s" % save_path)
+            # prepare columns.
+            columns = []
+            for t in range(T+1):
+                columns.append("V%s" % str(t))
+            # save excel for R
+            for k in range(K_total):
+                _path = save_path + "/feature_{0}.xlsx".format(str(k+1))
+                _data = all_data[:, :, :, k].reshape(N*len(scene), T+1)
+                df = pd.DataFrame(_data, columns=columns)
+                df.to_excel(_path, sheet_name="feature_{0}".format(str(k+K_start+1)))
 
-            # # save data
+            # save ground truth
+            ran = [[N*len(scene)],
+                pool_APIlist, #.tolist(),
+                [K_total],
+                [Q]
+            ]
+            list_data = []  # len=(K_total, Q)
+            # update object ids
+            for k in range(K_total):
+                list_data.append([])
+            for APIid in range(Q):
+                apis_to_call = APIs_idonly[APIid, :]
+                K_start = 0           
+                for scene_id, _scene in enumerate(scene):
+                    K_end = K_start + K_dict[_scene]
+                    for k in range(K_start, K_end):
+                      list_data[k].append([int(_id + scene_id*N) 
+                                           for _id 
+                                           in API_pool[_scene][apis_to_call[scene_id]].object_ids])
+                    K_start = K_end
+                    
+            # calculate all body
+            # save api gt
+            api_gt = []
+            # all_body = set()
+            for api_id in range(Q):
+                apis_to_call = APIs_idonly[api_id, :]
+                _api_gt = [] # len = scene_num
+                for scene_id, _scene in enumerate(scene):
+                    api = API_pool[_scene][apis_to_call[scene_id]]
+                    obj_ids_with_compensation = [int(scene_id*N + _id) for _id in api.object_ids]
+                    api_dict = api.to_dict()
+                    api_dict["object_ids"] = obj_ids_with_compensation
+                    _api_gt.append(api_dict)
+                api_gt.append(_api_gt)
+
+            json.dump(api_gt, open(save_path + "/api_gt.json", "w"), indent=4)
+            # json.dump(born_spots.tolist(), open(save_path + "/born_spots.json", "w"), indent=4)
+            json.dump(ran, open(save_path + "/ran.json", "w"), indent=4)
+            json.dump(list_data, open(save_path + "/list_data.json", "w"), indent=4)
 
 
+def removeNAN(data):
+    for i in range(len(data)):
+        for j in range(len(data[0])):
+            for k in range(len(data[0][0])):
+                if data[i][j][k] == "NA":
+                    data[i][j][k] = 1
+                elif data[i][j][k] == "NaN":
+                    data[i][j][k] = 1
+    return data
 
-def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
+
+def evaluate_mirror(scene, ablation_flag, only_mirror_flag=False, Q=10, N=20, T=1000):
     # evaluate_style = "effect"
     # ths = [2.5758293035489004, 1.959963984540054]  # 0.01, 0.05, k=1
     # # ths = [2.807033768343811, 2.241402727604947]# 0.01, 0.05, k=2
     # # ths = [2.935199468866699, 2.3939797998185104] # 0.01, 0.05, k=3
+    # # ths = [3.023341439739154, 2.497705474412374] # 0.01, 0.05, k=4
+    # # ths = [3.090232306167813, 2.5758293035489004] # 0.01, 0.05, k=5
+    # # ths = [3.143980287069073, 2.638257273476751] # 0.01, 0.05, k=6   
     # effect_flag = True
 
     evaluate_style = "p"
-    ths = [0.05/(27*10*1)]  #, 0.01/(27*10*1)]  #[0.01, 0.05]
+    if "rotation" in scene[0]:
+        correction = 27*10*1
+    elif "2d_position" in scene[0]:
+        correction = 20*10*2
+    elif "3d_position" in scene[0]:
+        correction = 20*10*3
+    elif "light" in scene[0]:
+        correction = 20*10*1
+    ths = [0.05]  # /correction   #0.05/(20*10*3)] #, 0.01/(27*10*1)]  # [0.05, 0.01]
     effect_flag = False
 
     for th in ths:
-        prediction_root = "./prediction/S2-S3"
+        prediction_root = "./prediction/origin_exp"
         gt_root = "./data"
 
         all_acc = []
@@ -609,9 +744,11 @@ def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
         all_precision = []
         all_spec = []
         all_F1 = []
+
         scene_name = ""
         for _scene in scene:
             scene_name = scene_name + _scene + '_'
+
             # load prediction result
             if ablation_flag:
                 result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_Q{1}_N{2}_T{3}_{4}list.json".format(_scene, 
@@ -621,22 +758,44 @@ def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
                                                                                                                 evaluate_style)))
             else:
                 result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_{1}list.json".format(_scene, evaluate_style)))
+            
+            
+            # check body number
+            min_N = 100
             for result_pth in result_pths:
-                # clear
-                acc_per_round = []
-                recall_per_round = []
-                precision_per_round = []
-                spec_per_round = []
-                F1_per_round = []
-
                 file_name = result_pth.split("/")[-1]
                 # find ground truth path
                 gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_{0}list.json".format(evaluate_style), ""))
                 gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+                if "rotation" in _scene:
+                    body_num = len(gt_list[-2])
+                else:
+                    body_num = len(gt_list[-1])
+                if body_num < min_N:
+                    min_N = body_num
+
+            # choose mirrored object number
+            mirror_obj_num = np.random.randint(low=1, high=min_N+1)
+            
+            for result_pth in result_pths:
+                file_name = result_pth.split("/")[-1]
+                # find ground truth path
+                gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_{0}list.json".format(evaluate_style), ""))
+                gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+                if "rotation" in _scene:
+                    gt_obj_ids = gt_list[-2]
+                else:
+                    gt_obj_ids = gt_list[-1]
                 ran = json.load(open(gt_folder + "/ran.json", "r"))
-                N = ran[0][0]
+                N_physic = ran[0][0]
+                N_total = N_physic + mirror_obj_num
                 # load prediction result
                 pred = json.load(open(result_pth, "r"))  # len=(N, Q, K)
+                # choose mirrored objects & add mirrored predictions
+                mirrored_ids = np.random.choice(a=gt_obj_ids, size=mirror_obj_num, replace=False)
+                for k in range(len(pred)):
+                    for mirrored_obj_id in mirrored_ids:
+                        pred[k].append(pred[k][mirrored_obj_id]) # pred shape -> (K, N+mirror_num, Q)
                 if effect_flag:
                     # convert to ndarray
                     pred_array = np.array(pred)
@@ -657,31 +816,52 @@ def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
                             pass
                         else:
                             pred_obj = set(np.where(_p < th)[0]) | pred_obj
+                    # add mirrored ids
+                    gt_obj = set(gt_list[api_id]["object_ids"])
+                    mirror_gt_obj = set()
+                    mirrored_id_for_this_api = set(mirrored_ids) & gt_obj
+                    for _i in mirrored_id_for_this_api:
+                        mirror_index_to_add = np.where(mirrored_ids==_i)[0] + N_physic
+                        gt_obj = gt_obj | set(mirror_index_to_add)
+                        mirror_gt_obj = mirror_gt_obj | set(mirror_index_to_add)
                     # calculate metircs
-                    TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
-                    pred_F = set(range(N)) - pred_obj
-                    F_gt = set(range(N)) - set(gt_list[api_id]["object_ids"])
-                    TF_list = pred_obj & F_gt
-                    FP_list = pred_F & F_gt
-                    FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
+                    if only_mirror_flag:
+                        physic_gt_obj = set(gt_list[api_id]["object_ids"])
+                        mirror_pred_obj = pred_obj - physic_gt_obj
+                        TP_list = mirror_pred_obj & mirror_gt_obj
+                        pred_F = set(range(N_total)) - mirror_pred_obj
+                        F_gt = set(range(N_total)) - mirror_gt_obj
+                        TF_list = mirror_pred_obj & F_gt
+                        FP_list = pred_F & F_gt
+                        FN_list = mirror_gt_obj - mirror_pred_obj
+                        predict_len = len(mirror_pred_obj)
+                        gt_len = len(mirror_gt_obj)
+                    else:
+                        TP_list = pred_obj & gt_obj
+                        pred_F = set(range(N_total)) - pred_obj
+                        F_gt = set(range(N_total)) - gt_obj
+                        TF_list = pred_obj & F_gt
+                        FP_list = pred_F & F_gt
+                        FN_list = gt_obj - pred_obj
+                        predict_len = len(pred_obj)
+                        gt_len = len(gt_obj)
                     # acc
-                    _acc = (len(TP_list) + len(FP_list)) / N
-                    acc_per_round.append(_acc)
+                    _acc = (len(TP_list) + len(FP_list)) / N_total
                     all_acc.append(_acc)
                     # recall
-                    _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
-                    recall_per_round.append(_recall)
+                    if gt_len == 0:
+                        _recall = 1
+                    else:
+                        _recall = len(TP_list)/gt_len
                     all_recall.append(_recall)
                     # precision
-                    if len(pred_obj) == 0:
+                    if predict_len == 0:
                         _precision = 0
                     else:
-                        _precision = len(TP_list)/len(pred_obj)
-                    precision_per_round.append(_precision)
+                        _precision = len(TP_list)/predict_len
                     all_precision.append(_precision)
                     # specificity
                     _spec = len(FP_list) / len(F_gt)
-                    spec_per_round.append(_spec)
                     all_spec.append(_spec)
                     # F1
                     # _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
@@ -689,14 +869,8 @@ def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
                         _f1 = 2*_recall*_precision / (_recall + _precision)
                     else:
                         _f1 = 0
-                    F1_per_round.append(_f1)
                     all_F1.append(_f1)
 
-                
-                # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
-                #                                                             np.mean(recall_per_round), 
-                #                                                             np.mean(precision_per_round)))
-        
         print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
         metrics = [
             np.mean(all_acc),
@@ -706,38 +880,239 @@ def evaluate(scene, ablation_flag, Q=10, N=20, T=1000):
             np.mean(all_F1)
         ]
         
-        # with open("./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
-        #     writer = csv.writer(f)
-        #     writer.writerow(metrics)
-        # print("save to ./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th))
+        with open("./results/{0}{1}{2}_only_mirror_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
+            writer = csv.writer(f)
+            for value in metrics:
+                writer.writerow([value])
+        print("save to ./results/{0}{1}{2}_only_mirror_metrics.csv".format(scene_name, evaluate_style, th))
 
-        return metrics
 
 
-def ablation_study(scenes, Q_origin, N_origin, T_origin):
+
+def evaluate(scene, ablation_flag, cross_flag=False, Q=10, N=20, T=1000):
+    # evaluate_style = "effect"
+    # # ths = [2.5758293035489004, 1.959963984540054]  # 0.01, 0.05, k=1
+    # ths = [2.807033768343811, 2.241402727604947]# 0.01, 0.05, k=2
+    # # ths = [2.935199468866699, 2.3939797998185104] # 0.01, 0.05, k=3
+    # # ths = [3.023341439739154, 2.497705474412374] # 0.01, 0.05, k=4
+    # # ths = [3.090232306167813, 2.5758293035489004] # 0.01, 0.05, k=5
+    # # ths = [3.143980287069073, 2.638257273476751] # 0.01, 0.05, k=6   
+    # effect_flag = True
+
+    evaluate_style = "p"
+    ths = [0.05/(27*10*1)]  #0.05/(20*10*3)] #, 0.01/(27*10*1)]  # [0.05, 0.01]
+    effect_flag = False
+
+    for th in ths:
+        prediction_root = "./prediction/S1"
+        gt_root = "./data"
+
+        all_acc = []
+        all_recall = []
+        all_precision = []
+        all_spec = []
+        all_F1 = []
+        scene_name = ""
+        if not cross_flag:
+            for _scene in scene:
+                scene_name = scene_name + _scene + '_'
+                # load prediction result
+                if ablation_flag:
+                    result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_Q{1}_N{2}_T{3}_{4}list.json".format(_scene, 
+                                                                                                                    Q,
+                                                                                                                    N,
+                                                                                                                    T,
+                                                                                                                    evaluate_style)))
+                else:
+                    result_pths = sorted(glob.glob(prediction_root + "/{0}_round*_{1}list.json".format(_scene, evaluate_style)))
+                for result_pth in result_pths:
+                    # clear
+                    acc_per_round = []
+                    recall_per_round = []
+                    precision_per_round = []
+                    spec_per_round = []
+                    F1_per_round = []
+
+                    file_name = result_pth.split("/")[-1]
+                    # find ground truth path
+                    gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_{0}list.json".format(evaluate_style), ""))
+                    gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+                    ran = json.load(open(gt_folder + "/ran.json", "r"))
+                    N = ran[0][0]
+                    # load prediction result
+                    pred = json.load(open(result_pth, "r"))  # len=(N, Q, K)
+                    if effect_flag:
+                        # convert to ndarray
+                        pred_array = np.array(pred)
+                        # mean of all N*Q*K
+                        mean_eff = np.mean(pred_array)
+                        # various
+                        var_eff = np.var(pred_array, ddof=1)
+                        eff_min = mean_eff - th*var_eff
+                        eff_max = mean_eff + th*var_eff
+                    
+                    for api_id in range(sum(type(gt) is dict for gt in gt_list)):
+                        pred_obj = set()
+                        for k in range(len(pred)):
+                            _pred_array = np.array(pred[k])
+                            _p = _pred_array[:, api_id]
+                            if effect_flag:
+                                pred_obj = set(np.where(np.logical_or(_p < eff_min, _p > eff_max))[0]) | pred_obj
+                                pass
+                            else:
+                                pred_obj = set(np.where(_p < th)[0]) | pred_obj
+                        # calculate metircs
+                        TP_list = pred_obj & set(gt_list[api_id]["object_ids"])
+                        pred_F = set(range(N)) - pred_obj
+                        F_gt = set(range(N)) - set(gt_list[api_id]["object_ids"])
+                        TF_list = pred_obj & F_gt
+                        FP_list = pred_F & F_gt
+                        FN_list = set(gt_list[api_id]["object_ids"]) - pred_obj
+                        # acc
+                        _acc = (len(TP_list) + len(FP_list)) / N
+                        acc_per_round.append(_acc)
+                        all_acc.append(_acc)
+                        # recall
+                        _recall = len(TP_list)/len(gt_list[api_id]["object_ids"])
+                        recall_per_round.append(_recall)
+                        all_recall.append(_recall)
+                        # precision
+                        if len(pred_obj) == 0:
+                            _precision = 0
+                        else:
+                            _precision = len(TP_list)/len(pred_obj)
+                        precision_per_round.append(_precision)
+                        all_precision.append(_precision)
+                        # specificity
+                        _spec = len(FP_list) / len(F_gt)
+                        spec_per_round.append(_spec)
+                        all_spec.append(_spec)
+                        # F1
+                        # _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                        if (_recall + _precision) != 0:
+                            _f1 = 2*_recall*_precision / (_recall + _precision)
+                        else:
+                            _f1 = 0
+                        F1_per_round.append(_f1)
+                        all_F1.append(_f1)
+
+                    
+                    # print("For {0}:\n    m-recall: {1}, m-precision: {2}".format(file_name, 
+                    #                                                             np.mean(recall_per_round), 
+                    #                                                             np.mean(precision_per_round)))
+        else:
+            scene_name = "_".join(scene) + "_"
+            result_pths = sorted(glob.glob(prediction_root + "/{0}round*_Q{1}_N{2}_T{3}_{4}list.json".format(scene_name, 
+                                                                                                            Q,
+                                                                                                            N,
+                                                                                                            T,
+                                                                                                            evaluate_style)))
+            for result_pth in result_pths:
+                file_name = result_pth.split("/")[-1]
+                # find ground truth path
+                gt_folder = "{0}/{1}".format(gt_root, file_name.replace("_{0}list.json".format(evaluate_style), ""))
+                gt_list = json.load(open(gt_folder + "/api_gt.json", "r"))
+                ran = json.load(open(gt_folder + "/ran.json", "r"))
+                N_total = ran[0][0]
+                # load prediction result
+                pred = json.load(open(result_pth, "r"))  # len=(K, N, Q)
+                if effect_flag:
+                    # convert to ndarray
+                    pred_array = np.array(removeNAN(pred))
+                    # mean of all N*Q*K
+                    mean_eff = np.mean(pred_array)
+                    # various
+                    var_eff = np.var(pred_array, ddof=1)
+                    eff_min = mean_eff - th*var_eff
+                    eff_max = mean_eff + th*var_eff
+                
+                pred_array = np.array(removeNAN(pred))
+                pred_array = np.min(pred_array, axis=0)
+                for api_id in range(len(gt_list)):
+                    _p = pred_array[:, api_id]
+                    if effect_flag:
+                        pred_obj = set(np.where(np.logical_or(_p < eff_min, _p > eff_max))[0])
+                        pass
+                    else:
+                        pred_obj = set(np.where(_p < th)[0])
+                    # prepare gt obj
+                    gt_obj = set()
+                    for APIs in gt_list[api_id]:
+                        gt_obj = set(APIs["object_ids"]) | gt_obj
+                    # calculate metircs
+                    TP_list = pred_obj & gt_obj
+                    pred_F = set(range(N_total)) - pred_obj
+                    F_gt = set(range(N_total)) - gt_obj
+                    TF_list = pred_obj & F_gt
+                    FP_list = pred_F & F_gt
+                    FN_list = gt_obj - pred_obj
+                    # acc
+                    _acc = (len(TP_list) + len(FP_list)) / N_total
+                    all_acc.append(_acc)
+                    # recall
+                    _recall = len(TP_list)/len(gt_obj)
+                    all_recall.append(_recall)
+                    # precision
+                    if len(pred_obj) == 0:
+                        _precision = 0
+                    else:
+                        _precision = len(TP_list)/len(pred_obj)
+                    all_precision.append(_precision)
+                    # specificity
+                    _spec = len(FP_list) / len(F_gt)
+                    all_spec.append(_spec)
+                    # F1
+                    # _f1 = 2*len(TP_list) / (2*len(TP_list) + len(FP_list) + len(FN_list))
+                    if (_recall + _precision) != 0:
+                        _f1 = 2*_recall*_precision / (_recall + _precision)
+                    else:
+                        _f1 = 0
+                    all_F1.append(_f1)
+            
+        print("recall: {0}, \n precision: {1}".format(np.mean(all_recall), np.mean(all_precision)))
+        metrics = [
+            np.mean(all_acc),
+            np.mean(all_recall),
+            np.mean(all_precision),
+            np.mean(all_spec),
+            np.mean(all_F1)
+        ]
+        
+        with open("./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th), "w") as f:
+            writer = csv.writer(f)
+            for value in metrics:
+                writer.writerow([value])
+        print("save to ./results/{0}{1}{2}_metrics.csv".format(scene_name, evaluate_style, th))
+
+    return metrics
+
+
+def ablation_study(scene, Q_origin, N_origin, T_origin):
     # set hyper-parameters
     ablation_Q = range(2, 21, 2)
     ablation_N = range(2,13,1)  # 3 or 5 for single agent
-    ablation_T = range(400, 1401, 100)
+    ablation_T = range(100, 1401, 100)
+    # ablation_T = range(400, 1401, 100)
+    ablation_T = [30,40,50,60,70,80,90,100,120,140,160,180,200,250,300,400,500,600,700,800,900,1000,1200,1400]
 
-    for scene in scenes:
-        # test Q
-        N = N_origin
-        T = T_origin
-        for Q in ablation_Q:
-            data_simulator(scene, Q, N, T)
-        
-        # test N
-        Q = Q_origin
-        T = T_origin
-        for N in ablation_N:
-            data_simulator(scene, Q, N, T)
-        
-        # test T
-        Q = Q_origin
-        N = N_origin
-        for T in ablation_T:
-            data_simulator(scene, Q, N, T)
+    # for scene in scenes:
+    # # test Q
+    # N = N_origin
+    # T = T_origin
+    # for Q in ablation_Q:
+    #     data_simulator(scene, Q, N, T)
+    
+    # # test N
+    # Q = Q_origin
+    # T = T_origin
+    # for N in ablation_N:
+    #     data_simulator(scene, Q, N, T)
+    
+    # test T
+    Q = Q_origin
+    N = N_origin
+    for T in ablation_T:
+        data_simulator(scene, Q, N, T)
     
     return
 
@@ -752,39 +1127,61 @@ def ablation_plot(metrics_array, ablation_range, xlabel):
         "Specificity",
         "F1 score"
     ]
-    for i in range(metrics_array.shape[1]):
-        x = ablation_range  # 横坐标值
-        y = metrics_array[:, i]  # 纵坐标值
+    # for i in range(metrics_array.shape[1]):
+    #     x = ablation_range  # 横坐标值
+    #     y = metrics_array[:, i]  # 纵坐标值
 
-        # 使用 Matplotlib 绘制曲线图
-        plt.plot(x, y, label=column_names[i])
+    #     # 使用 Matplotlib 绘制曲线图
+    #     plt.plot(x, y, label=column_names[i])
+
+    # prepare seaborn data
+    ablation_values, column_indices = np.meshgrid(ablation_range, np.arange(metrics_array.shape[1]))
+    bbb = metrics_array.copy()
+    bbb = bbb.swapaxes(0, 1)
+    sns_data = {
+        'Ablation_Range': ablation_values.flatten(),
+        'Metrics': bbb.flatten(),
+        'Column': column_indices.flatten()
+    }
+    # sns.set_style("whitegrid")
+    plot = sns.relplot(x='Ablation_Range', y='Metrics', 
+                kind='line', data=sns_data, 
+                # col="Column", 
+                hue="Column", style="Column",
+                ci="sd",
+                # legend=False,
+                height=6, aspect=1.5,
+                linewidth=2.5, markers=True, dashes=False)
+    # plt.gcf().set_facecolor("white")
+    plot.ax.set_facecolor("#f0f0f0")
+    plot.ax.grid(color='white', linestyle='-', linewidth=1)
 
     plt.xticks(ablation_range)
 
     # 添加标签和图例
     plt.xlabel(xlabel)
     plt.ylabel('Evaluation Metrics')
-    plt.title('')
-    # plt.legend(loc='lower left')
+    # plt.title('')
+    # # plt.legend(loc='lower left')
 
     # 显示图形
     plt.show()
 
 
-
 def ablation_evaluation(scene, ablation_flag, Q_origin, N_origin, T_origin):
     # set hyper-parameters
     ablation_Q = range(2, 21, 2)
-    # ablation_N = range(2, 13, 1)  # 3 or 5 for single agent
-    ablation_N = range(10, 101, 10)
+    ablation_N = range(2, 13, 1)  # 3 or 5 for single agent
+    # ablation_N = range(10, 101, 10)
     ablation_T = range(400, 1401, 100)
+    # ablation_T = [10,20,30,40,50,60,70,80,90,100,120,140,160,180,200,250,300,400,500,600,700,800,900,1000,1200,1400]
 
     # evaluate Q
     N = N_origin
     T = T_origin
     Q_metrics = []
     for Q in ablation_Q:
-        Q_metrics.append(evaluate(scene, ablation_flag, Q, N, T))  # shape=(5,)
+        Q_metrics.append(evaluate(scene, ablation_flag, False, Q, N, T))  # shape=(5,)
     ablation_plot(np.array(Q_metrics), ablation_Q, 'Q')
     
     
@@ -793,7 +1190,7 @@ def ablation_evaluation(scene, ablation_flag, Q_origin, N_origin, T_origin):
     T = T_origin
     N_metrics = []
     for N in ablation_N:
-        N_metrics.append(evaluate(scene, ablation_flag, Q, N, T))
+        N_metrics.append(evaluate(scene, ablation_flag, False, Q, N, T))
     ablation_plot(np.array(N_metrics), ablation_N, 'N')
     
     # test T
@@ -801,7 +1198,7 @@ def ablation_evaluation(scene, ablation_flag, Q_origin, N_origin, T_origin):
     N = N_origin
     T_metrics = []
     for T in ablation_T:
-        T_metrics.append(evaluate(scene, ablation_flag, Q, N, T))
+        T_metrics.append(evaluate(scene, ablation_flag, False, Q, N, T))
     ablation_plot(np.array(T_metrics), ablation_T, 'T')
     
     return
@@ -816,9 +1213,9 @@ np.random.seed(7)
 if __name__ == "__main__":
     scenes = [
         # ["3d_rotation"],  # 单智能体
-        # ["2d_position"],
+        ["2d_position"],
         ["3d_position"],
-        # ["light"],
+        ["light"],
         # ["2d_position", "light"],
         # ["3d_position", "light"],
         # ["2d_position", "3d_position"],
@@ -826,13 +1223,15 @@ if __name__ == "__main__":
     ]
 
     Q_origin = 10
-    # N_origin = 3
-    N_origin = 20
+    if "rotation" in scenes[0][0]:
+        N_origin = 3
+    else:
+        N_origin = 20
     T_origin = 1000
 
     for scene in scenes:
-        
         # data_simulator(scene, Q_origin, N_origin, T_origin)
         # ablation_study(scene, Q_origin, N_origin, T_origin)
-        # evaluate(scene, ablation_flag=False)
-        ablation_evaluation(scene, ablation_flag=True, Q_origin=Q_origin, N_origin=N_origin, T_origin=T_origin)
+        # evaluate(scene, ablation_flag=False, cross_flag=True)
+        # ablation_evaluation(scene, ablation_flag=True, Q_origin=Q_origin, N_origin=N_origin, T_origin=T_origin)
+        evaluate_mirror(scene, ablation_flag=False, only_mirror_flag=True, Q=Q_origin, N=N_origin, T=T_origin)

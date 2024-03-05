@@ -1,0 +1,50 @@
+{
+    "left_arm": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -15,
+            170
+        ]
+    },
+    "right_arm": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -15,
+            170
+        ]
+    },
+    "left_leg": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -20,
+            80
+        ]
+    },
+    "right_leg": {
+        "init": [
+            0,
+            0,
+            0
+        ],
+        "control": 2,
+        "range": [
+            -20,
+            80
+        ]
+    }
+}
